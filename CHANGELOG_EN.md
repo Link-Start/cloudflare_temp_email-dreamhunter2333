@@ -14,6 +14,12 @@
 
 ### Improvements
 
+- perf: |User| Add server-side pagination and remote search for bound addresses, with optional per-address and total counts; validate user-mail list ownership with a JOIN and delete ownership with `EXISTS` instead of loading every bound address for large users (issue #1103)
+
+### Testing
+
+- test: |E2E| Add regression coverage for user-address pagination, search, optional counts, and cross-user mail isolation
+
 ## v1.10.0
 
 ### Features
