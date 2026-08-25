@@ -6,6 +6,7 @@ import { checkCfTurnstile, checkIsAdmin, getBooleanValue } from "../utils";
 import { resolveRawEmailRow } from "../gzip";
 import { TelegramSettings } from "./settings";
 import i18n from "../i18n";
+import { serializeMailState } from "../mail_flags";
 
 const encoder = new TextEncoder();
 const TG_AUTH_TIMEOUT = 300;
@@ -145,7 +146,7 @@ async function getMail(c: Context<HonoCustomType>): Promise<Response> {
             if (!result) {
                 return c.text("Mail not found", 404);
             }
-            return c.json(await resolveRawEmailRow(result));
+            return c.json(serializeMailState(await resolveRawEmailRow(result), false));
         }
         const userId = await checkTelegramAuth(c, initData);
         const jwtList = await c.env.KV.get<string[]>(`${CONSTANTS.TG_KV_PREFIX}:${userId}`, 'json') || [];
@@ -168,7 +169,7 @@ async function getMail(c: Context<HonoCustomType>): Promise<Response> {
                 return c.text(msgs.TgNoPermissionViewMailMsg, 403);
             }
         }
-        return c.json(await resolveRawEmailRow(result));
+        return c.json(serializeMailState(await resolveRawEmailRow(result), false));
     }
     catch (e) {
         return c.text((e as Error).message, 400);

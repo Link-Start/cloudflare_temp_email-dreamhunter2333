@@ -9,6 +9,7 @@ import {
     getMailStateQuery,
     getMailStateOptions,
     applyMailStateUpdate,
+    serializeMailState,
 } from '../mail_flags';
 
 const listMails = async (c: Context<HonoCustomType>) => {
@@ -45,8 +46,8 @@ const getMail = async (c: Context<HonoCustomType>) => {
         `SELECT * FROM raw_mails where id = ? and address = ?`
     ).bind(mail_id, address).first();
     if (!result) return c.json(null);
-    return c.json(await resolveRawEmailRow(
-        result,
+    return c.json(serializeMailState(
+        await resolveRawEmailRow(result),
         getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
     ));
 };

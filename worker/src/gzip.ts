@@ -4,7 +4,6 @@
  */
 
 import { RawMailRow } from "./models";
-import { serializeMailState } from "./mail_flags";
 
 export async function compressText(text: string): Promise<ArrayBuffer> {
     const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
@@ -35,21 +34,15 @@ export async function resolveRawEmail(row: RawMailRow): Promise<string> {
 /**
  * Resolve a single row: decompress raw_blob if present, strip raw_blob from result.
  */
-export async function resolveRawEmailRow(
-    row: RawMailRow,
-    enableMailStates = false,
-): Promise<RawMailRow> {
+export async function resolveRawEmailRow(row: RawMailRow): Promise<RawMailRow> {
     const raw = await resolveRawEmail(row);
     const { raw_blob: _, ...rest } = row;
-    return serializeMailState({ ...rest, raw }, enableMailStates);
+    return { ...rest, raw };
 }
 
 /**
  * Batch resolve raw emails for list queries using Promise.all.
  */
-export async function resolveRawEmailList(
-    rows: RawMailRow[],
-    enableMailStates = false,
-): Promise<RawMailRow[]> {
-    return Promise.all(rows.map(row => resolveRawEmailRow(row, enableMailStates)));
+export async function resolveRawEmailList(rows: RawMailRow[]): Promise<RawMailRow[]> {
+    return Promise.all(rows.map(row => resolveRawEmailRow(row)));
 }

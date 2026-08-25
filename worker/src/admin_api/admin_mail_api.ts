@@ -2,6 +2,7 @@ import { Context } from "hono";
 import { handleMailListQuery } from "../common";
 import { resolveRawEmailRow } from "../gzip";
 import { getBooleanValue } from "../utils";
+import { serializeMailState } from "../mail_flags";
 
 export default {
     getMails: async (c: Context<HonoCustomType>) => {
@@ -32,8 +33,8 @@ export default {
             `SELECT * FROM raw_mails WHERE id = ?`
         ).bind(id).first();
         if (!result) return c.json(null);
-        return c.json(await resolveRawEmailRow(
-            result,
+        return c.json(serializeMailState(
+            await resolveRawEmailRow(result),
             getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
         ));
     },
