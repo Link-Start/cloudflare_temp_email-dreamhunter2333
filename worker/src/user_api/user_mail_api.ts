@@ -2,16 +2,26 @@ import { Context } from "hono";
 import i18n from "../i18n";
 import { handleMailListQuery } from "../common";
 import { getBooleanValue } from "../utils";
+import { parseMailFlagFilter, parseMailFlagUpdate } from "../mail_flags";
 
 export default {
     getMails: async (c: Context<HonoCustomType>) => {
         const { user_id } = c.get("userPayload");
-        const { address, limit, offset } = c.req.query();
+        const { address, limit, offset, flag, flag_state } = c.req.query();
         const filterQuerys = [`ua.user_id = ?`];
         const filterParams = [String(user_id)];
         if (address) {
             filterQuerys.push(`rm.address = ?`);
             filterParams.push(address);
+        }
+        const flagFilter = parseMailFlagFilter(flag, flag_state);
+        if (flagFilter === null) return c.json({ error: "Invalid mail flag filter" }, 400);
+        if (flagFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+            return c.json({ error: "Mail flags are disabled" }, 403);
+        }
+        if (flagFilter) {
+            filterQuerys.push(`(COALESCE(rm.flags, 0) & ?) ${flagFilter.state === 'set' ? '!=' : '='} 0`);
+            filterParams.push(String(flagFilter.mask));
         }
         const fromQuery = ` FROM users_address ua`
             + ` JOIN address a ON a.id = ua.address_id`
@@ -41,5 +51,26 @@ export default {
         return c.json({
             success: success
         })
+    },
+    updateMailFlags: async (c: Context<HonoCustomType>) => {
+        if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+            return c.json({ error: "Mail flags are disabled" }, 403);
+        }
+        const update = parseMailFlagUpdate(await c.req.json().catch(() => null));
+        if (!update) return c.json({ error: "Invalid mail flags request" }, 400);
+
+        const { user_id } = c.get("userPayload");
+        const placeholders = update.ids.map(() => '?').join(',');
+        const result = await c.env.DB.prepare(
+            `UPDATE raw_mails`
+            + ` SET flags = (COALESCE(flags, 0) | ?) & ~?`
+            + ` WHERE id IN (${placeholders})`
+            + ` AND EXISTS (`
+            + `SELECT 1 FROM users_address ua`
+            + ` JOIN address a ON a.id = ua.address_id`
+            + ` WHERE ua.user_id = ? AND a.name = raw_mails.address`
+            + `)`
+        ).bind(update.add, update.remove, ...update.ids, user_id).run();
+        return c.json({ success: result.success, changes: result.meta.changes ?? 0 });
     }
 }

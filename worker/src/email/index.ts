@@ -12,6 +12,7 @@ import { forwardEmail } from "./forward";
 import { EmailRuleSettings } from "../models";
 import { CONSTANTS } from "../constants";
 import { compressText } from "../gzip";
+import { insertRawMail, resolveInitialMailFlags } from "../mail_flags";
 
 
 async function email(message: ForwardableEmailMessage, env: Bindings, ctx: ExecutionContext) {
@@ -67,6 +68,9 @@ async function email(message: ForwardableEmailMessage, env: Bindings, ctx: Execu
     const message_id = message.headers.get("Message-ID");
     // save email
     try {
+        const initialFlags = await resolveInitialMailFlags(
+            getBooleanValue(env.ENABLE_MAIL_FLAGS), env, toAddress, parsedEmailContext
+        );
         let success = false;
         if (getBooleanValue(env.ENABLE_MAIL_GZIP)) {
             let compressed: ArrayBuffer | null = null;
@@ -77,38 +81,50 @@ async function email(message: ForwardableEmailMessage, env: Bindings, ctx: Execu
             }
             if (compressed) {
                 try {
-                    ({ success } = await env.DB.prepare(
-                        `INSERT INTO raw_mails (source, address, raw_blob, message_id) VALUES (?, ?, ?, ?)`
-                    ).bind(
-                        message.from, toAddress, compressed, message_id
-                    ).run());
+                    ({ success } = await insertRawMail(env.DB, {
+                        source: message.from,
+                        address: toAddress,
+                        content: compressed,
+                        contentColumn: 'raw_blob',
+                        messageId: message_id,
+                        flags: initialFlags,
+                    }));
                 } catch (dbError) {
                     // Fallback to plaintext only if raw_blob column is missing (migration not applied)
                     const errMsg = String(dbError);
                     if (errMsg.includes('raw_blob') || errMsg.includes('no such column')) {
                         console.error("raw_blob column missing, falling back to plaintext", dbError);
-                        ({ success } = await env.DB.prepare(
-                            `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-                        ).bind(
-                            message.from, toAddress, parsedEmailContext.rawEmail, message_id
-                        ).run());
+                        ({ success } = await insertRawMail(env.DB, {
+                            source: message.from,
+                            address: toAddress,
+                            content: parsedEmailContext.rawEmail,
+                            contentColumn: 'raw',
+                            messageId: message_id,
+                            flags: initialFlags,
+                        }));
                     } else {
                         throw dbError;
                     }
                 }
             } else {
-                ({ success } = await env.DB.prepare(
-                    `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-                ).bind(
-                    message.from, toAddress, parsedEmailContext.rawEmail, message_id
-                ).run());
+                ({ success } = await insertRawMail(env.DB, {
+                    source: message.from,
+                    address: toAddress,
+                    content: parsedEmailContext.rawEmail,
+                    contentColumn: 'raw',
+                    messageId: message_id,
+                    flags: initialFlags,
+                }));
             }
         } else {
-            ({ success } = await env.DB.prepare(
-                `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-            ).bind(
-                message.from, toAddress, parsedEmailContext.rawEmail, message_id
-            ).run());
+            ({ success } = await insertRawMail(env.DB, {
+                source: message.from,
+                address: toAddress,
+                content: parsedEmailContext.rawEmail,
+                contentColumn: 'raw',
+                messageId: message_id,
+                flags: initialFlags,
+            }));
         }
         if (!success) {
             message.setReject(`Failed save message to ${toAddress}`);

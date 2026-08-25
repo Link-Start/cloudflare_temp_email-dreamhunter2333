@@ -19,6 +19,30 @@ res = requests.get(
 
 **注意**：`/api/mails` 按设计返回的是原始 RFC822 数据（如 `source`/`raw`），不保证直接包含 `subject`、`text`、`html` 等已解析字段。若要直接读取正文，请在客户端侧解析 `raw`（例如 `mail-parser-wasm`、`postal-mime`）。
 
+## 邮件 Flag API
+
+启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应中的 `flags` 为整数位掩码。当前 bit 0 表示 `UNREAD`：值为 `1` 时未读，`NULL` 或 `0` 按已读处理。
+
+地址 JWT 使用 `PATCH /api/mails/flags` 批量增删状态位。每次最多传入 100 个邮件 ID；当前仅允许修改 `UNREAD` 位。
+
+```python
+requests.patch(
+    "https://<你的worker地址>/api/mails/flags",
+    headers={"Authorization": f"Bearer {你的JWT密码}"},
+    json={"ids": [1, 2], "add": 0, "remove": 1}
+)
+```
+
+用户 JWT 使用相同请求体访问 `PATCH /user_api/mails/flags`，只能修改该用户已绑定地址的邮件。服务端始终保留请求未涉及的其他 Flag 位。
+
+邮件列表接口支持通用 Flag 查询参数：`flag` 为 bit 位置（`0-30`），`flag_state` 为 `set` 或 `unset`。例如查询未读邮件：
+
+```text
+GET /api/mails?limit=20&offset=0&flag=0&flag_state=set
+```
+
+查询已读邮件则使用 `flag=0&flag_state=unset`。`/user_api/mails` 支持相同参数，后续自定义 Flag 可以直接使用 bit 10～19。
+
 ## admin 邮件 API
 
 支持 `address` 过滤

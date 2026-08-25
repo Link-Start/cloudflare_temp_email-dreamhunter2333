@@ -5,18 +5,32 @@ import { getBooleanValue } from '../utils';
 import { handleMailListQuery, deleteAddressWithData, updateAddressUpdatedAt } from '../common'
 import { resolveRawEmailRow } from '../gzip'
 import { getSendBalanceState } from './send_balance';
+import { parseMailFlagFilter, parseMailFlagUpdate, serializeMailFlags } from '../mail_flags';
 
 const listMails = async (c: Context<HonoCustomType>) => {
     const { address } = c.get("jwtPayload")
     if (!address) {
         return c.json({ "error": "No address" }, 400)
     }
-    const { limit, offset } = c.req.query();
+    const { limit, offset, flag, flag_state } = c.req.query();
     if (Number.parseInt(offset) <= 0) updateAddressUpdatedAt(c, address);
+    const flagFilter = parseMailFlagFilter(flag, flag_state);
+    if (flagFilter === null) return c.json({ error: "Invalid mail flag filter" }, 400);
+    if (flagFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+        return c.json({ error: "Mail flags are disabled" }, 403);
+    }
+
+    const filters = [`address = ?`];
+    const params = [address];
+    if (flagFilter) {
+        filters.push(`(COALESCE(flags, 0) & ?) ${flagFilter.state === 'set' ? '!=' : '='} 0`);
+        params.push(String(flagFilter.mask));
+    }
+    const whereClause = filters.join(' AND ');
     return await handleMailListQuery(c,
-        `SELECT * FROM raw_mails where address = ?`,
-        `SELECT count(*) as count FROM raw_mails where address = ?`,
-        [address], limit, offset
+        `SELECT * FROM raw_mails WHERE ${whereClause}`,
+        `SELECT count(*) as count FROM raw_mails WHERE ${whereClause}`,
+        params, limit, offset
     );
 };
 
@@ -27,7 +41,8 @@ const getMail = async (c: Context<HonoCustomType>) => {
         `SELECT * FROM raw_mails where id = ? and address = ?`
     ).bind(mail_id, address).first();
     if (!result) return c.json(null);
-    return c.json(await resolveRawEmailRow(result));
+    const resolved = await resolveRawEmailRow(result);
+    return c.json(serializeMailFlags(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS)));
 };
 
 const deleteMail = async (c: Context<HonoCustomType>) => {
@@ -42,6 +57,23 @@ const deleteMail = async (c: Context<HonoCustomType>) => {
         `DELETE FROM raw_mails WHERE address = ? and id = ? `
     ).bind(address.toLowerCase(), id).run();
     return c.json({ success });
+};
+
+const updateMailFlags = async (c: Context<HonoCustomType>) => {
+    if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+        return c.json({ error: "Mail flags are disabled" }, 403);
+    }
+    const update = parseMailFlagUpdate(await c.req.json().catch(() => null));
+    if (!update) return c.json({ error: "Invalid mail flags request" }, 400);
+
+    const { address } = c.get("jwtPayload");
+    const placeholders = update.ids.map(() => '?').join(',');
+    const result = await c.env.DB.prepare(
+        `UPDATE raw_mails`
+        + ` SET flags = (COALESCE(flags, 0) | ?) & ~?`
+        + ` WHERE address = ? AND id IN (${placeholders})`
+    ).bind(update.add, update.remove, address, ...update.ids).run();
+    return c.json({ success: result.success, changes: result.meta.changes ?? 0 });
 };
 
 const getSettings = async (c: Context<HonoCustomType>) => {
@@ -117,4 +149,7 @@ const clearSentItems = async (c: Context<HonoCustomType>) => {
     return c.json({ success });
 };
 
-export default { listMails, getMail, deleteMail, getSettings, deleteAddress, clearInbox, clearSentItems };
+export default {
+    listMails, getMail, deleteMail, updateMailFlags,
+    getSettings, deleteAddress, clearInbox, clearSentItems
+};

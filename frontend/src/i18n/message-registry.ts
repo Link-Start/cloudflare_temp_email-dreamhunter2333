@@ -34,6 +34,10 @@ export const MESSAGE_REGISTRY = {
     }
   },
   "components.MailBox": {
+    "allMail": {
+      "en": "All Mail",
+      "zh": "全部邮件"
+    },
     "attachments": {
       "en": "Show Attachments",
       "zh": "查看附件"
@@ -74,6 +78,10 @@ export const MESSAGE_REGISTRY = {
       "en": "Filter current page",
       "zh": "过滤当前页"
     },
+    "markCurrentPageRead": {
+      "en": "Mark This Page as Read",
+      "zh": "本页全部已读"
+    },
     "multiAction": {
       "en": "Multi Action",
       "zh": "多选"
@@ -93,6 +101,10 @@ export const MESSAGE_REGISTRY = {
     "query": {
       "en": "Query",
       "zh": "查询"
+    },
+    "read": {
+      "en": "Read",
+      "zh": "已读"
     },
     "refresh": {
       "en": "Refresh",
@@ -129,6 +141,10 @@ export const MESSAGE_REGISTRY = {
     "unselectAll": {
       "en": "Unselect All",
       "zh": "取消全选"
+    },
+    "unread": {
+      "en": "Unread",
+      "zh": "未读"
     }
   },
   "components.AiExtractInfo": {
@@ -193,6 +209,14 @@ export const MESSAGE_REGISTRY = {
     "loadRemoteImages": {
       "en": "Load Images",
       "zh": "加载图片"
+    },
+    "markRead": {
+      "en": "Mark as Read",
+      "zh": "标记已读"
+    },
+    "markUnread": {
+      "en": "Mark as Unread",
+      "zh": "标记未读"
     },
     "remoteImagesBlocked": {
       "en": "{count} remote resources blocked to protect your privacy",

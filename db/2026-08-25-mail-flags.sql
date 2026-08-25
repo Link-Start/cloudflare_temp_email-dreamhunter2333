@@ -1,0 +1,1 @@
+ALTER TABLE raw_mails ADD COLUMN flags INTEGER;

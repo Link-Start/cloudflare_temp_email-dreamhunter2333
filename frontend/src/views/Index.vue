@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 import { useGlobalState } from '../store'
 import { api } from '../api'
 import { useIsMobile } from '../utils/composables'
+import { getMailFlagFilterQuery } from '../utils/mail-flags'
 import { FullscreenExitOutlined } from '@vicons/material'
 
 import AddressBar from './index/AddressBar.vue';
@@ -32,17 +33,26 @@ const SendMail = defineAsyncComponent(() => {
 
 const { t } = useScopedI18n('views.Index')
 
-const fetchMailData = async (limit, offset) => {
+const fetchMailData = async (limit, offset, mailFlagFilter = 'all') => {
   if (mailIdQuery.value > 0) {
     const singleMail = await api.fetch(`/api/mail/${mailIdQuery.value}`);
     if (singleMail) return { results: [singleMail], count: 1 };
     return { results: [], count: 0 };
   }
-  return await api.fetch(`/api/mails?limit=${limit}&offset=${offset}`);
+  return await api.fetch(
+    `/api/mails?limit=${limit}&offset=${offset}${getMailFlagFilterQuery(mailFlagFilter)}`
+  );
 };
 
 const deleteMail = async (curMailId) => {
   await api.fetch(`/api/mails/${curMailId}`, { method: 'DELETE' });
+};
+
+const updateMailFlags = async (ids, add, remove) => {
+  await api.fetch(`/api/mails/flags`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, add, remove })
+  });
 };
 
 const deleteSenboxMail = async (curMailId) => {
@@ -127,7 +137,8 @@ onMounted(() => {
           </div>
           <MailBox :key="mailBoxKey" :showEMailTo="false" :showReply="openSettings.enableSendMail" :showSaveS3="openSettings.isS3Enabled"
             :saveToS3="saveToS3" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail"
-            :fetchMailData="fetchMailData" :deleteMail="deleteMail" :showFilterInput="true" />
+            :fetchMailData="fetchMailData" :deleteMail="deleteMail" :showFilterInput="true"
+            :enableMailFlags="openSettings.enableMailFlags" :updateMailFlags="updateMailFlags" />
         </n-tab-pane>
         <n-tab-pane v-if="openSettings.enableSendMail" name="sendbox" :tab="t('sendbox')">
           <SendBox :fetchMailData="fetchSenboxData" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail"

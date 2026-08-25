@@ -8,6 +8,7 @@ import { useIsMobile } from '../utils/composables'
 import { processItem } from '../utils/email-parser'
 import { utcToLocalDate } from '../utils';
 import { buildReplyModel, buildForwardModel } from '../utils/mail-actions'
+import { MAIL_FLAGS, hasMailFlag } from '../utils/mail-flags'
 import MailContentRenderer from "./MailContentRenderer.vue";
 import AiExtractInfo from "./AiExtractInfo.vue";
 
@@ -55,9 +56,20 @@ const props = defineProps({
     default: false,
     required: false
   },
+  enableMailFlags: {
+    type: Boolean,
+    default: false,
+    required: false
+  },
+  updateMailFlags: {
+    type: Function,
+    default: () => { },
+    required: false
+  },
 })
 
 const localFilterKeyword = ref('')
+const mailFlagFilter = ref('all')
 
 const {
   isDark, mailboxSplitSize, mailListView, mailListPreviewLineClamp, indexTab, loading, useUTCDate,
@@ -94,6 +106,60 @@ const data = computed(() => {
   });
 })
 
+const isMailUnread = (mail) => {
+  return props.enableMailFlags && hasMailFlag(mail?.flags, MAIL_FLAGS.UNREAD)
+}
+
+const currentPageHasUnread = computed(() => rawData.value.some(isMailUnread))
+const mailFlagFilterOptions = computed(() => [
+  { label: t('allMail'), value: 'all' },
+  { label: t('unread'), value: 'unread' },
+  { label: t('read'), value: 'read' },
+])
+
+const setMailsUnread = async (mails, unread) => {
+  const changedMails = mails.filter(mail => isMailUnread(mail) !== unread)
+  if (changedMails.length === 0) return true
+
+  changedMails.forEach(mail => {
+    const flags = Number(mail.flags ?? 0)
+    mail.flags = unread ? flags | MAIL_FLAGS.UNREAD : flags & ~MAIL_FLAGS.UNREAD
+  })
+  try {
+    await props.updateMailFlags(
+      changedMails.map(mail => mail.id),
+      unread ? MAIL_FLAGS.UNREAD : 0,
+      unread ? 0 : MAIL_FLAGS.UNREAD
+    )
+    return true
+  } catch (error) {
+    changedMails.forEach(mail => {
+      const flags = Number(mail.flags ?? 0)
+      mail.flags = unread ? flags & ~MAIL_FLAGS.UNREAD : flags | MAIL_FLAGS.UNREAD
+    })
+    message.error(error.message || "error")
+    return false
+  }
+}
+
+const markMailsRead = async (mails) => setMailsUnread(mails, false)
+
+const toggleCurrentMailUnread = async () => {
+  if (!curMail.value) return
+  await setMailsUnread([curMail.value], !isMailUnread(curMail.value))
+}
+
+const openMail = async (mail) => {
+  curMail.value = mail
+  await markMailsRead([mail])
+}
+
+const markCurrentPageRead = async () => {
+  if (!await markMailsRead(rawData.value)) return
+  message.success(t("success"))
+  if (mailFlagFilter.value === 'unread') await refresh()
+}
+
 const canGoPrevMail = computed(() => {
   if (!curMail.value) return false
   const currentIndex = data.value.findIndex(mail => mail.id === curMail.value.id)
@@ -111,12 +177,12 @@ const prevMail = async () => {
   const currentIndex = data.value.findIndex(mail => mail.id === curMail.value.id)
 
   if (currentIndex > 0) {
-    curMail.value = data.value[currentIndex - 1]
+    await openMail(data.value[currentIndex - 1])
   } else if (page.value > 1) {
     page.value--
     await refresh()
     if (data.value.length > 0) {
-      curMail.value = data.value[data.value.length - 1]
+      await openMail(data.value[data.value.length - 1])
     }
   }
 }
@@ -126,12 +192,12 @@ const nextMail = async () => {
   const currentIndex = data.value.findIndex(mail => mail.id === curMail.value.id)
 
   if (currentIndex < data.value.length - 1) {
-    curMail.value = data.value[currentIndex + 1]
+    await openMail(data.value[currentIndex + 1])
   } else if (count.value > page.value * pageSize.value) {
     page.value++
     await refresh()
     if (data.value.length > 0) {
-      curMail.value = data.value[0]
+      await openMail(data.value[0])
     }
   }
 }
@@ -175,22 +241,24 @@ watch([page, pageSize], async ([page, pageSize], [oldPage, oldPageSize]) => {
   }
 })
 
+watch(mailFlagFilter, async () => {
+  await backFirstPageAndRefresh()
+})
+
 const refresh = async () => {
   try {
     const { results, count: totalCount } = await props.fetchMailData(
-      pageSize.value, (page.value - 1) * pageSize.value
+      pageSize.value, (page.value - 1) * pageSize.value, mailFlagFilter.value
     );
     loading.value = true;
     rawData.value = await Promise.all(results.map(async (item) => {
       item.checked = false;
       return await processItem(item);
     }));
-    if (totalCount > 0) {
-      count.value = totalCount;
-    }
+    if (page.value === 1) count.value = totalCount;
     curMail.value = null;
     if (!isMobile.value && !mailListView.value && data.value.length > 0) {
-      curMail.value = data.value[0];
+      await openMail(data.value[0]);
     }
   } catch (error) {
     message.error(error.message || "error");
@@ -215,7 +283,7 @@ const clickRow = async (row) => {
     curMail.value = null;
     return;
   }
-  curMail.value = row;
+  await openMail(row);
 };
 
 
@@ -381,6 +449,11 @@ onBeforeUnmount(() => {
           <n-button @click="backFirstPageAndRefresh" type="primary" tertiary>
             {{ t('refresh') }}
           </n-button>
+          <n-button v-if="enableMailFlags && currentPageHasUnread" @click="markCurrentPageRead" tertiary>
+            {{ t('markCurrentPageRead') }}
+          </n-button>
+          <n-select v-if="enableMailFlags" v-model:value="mailFlagFilter" :options="mailFlagFilterOptions"
+            style="width: 120px" />
           <n-input v-if="showFilterInput" v-model:value="localFilterKeyword"
             :placeholder="t('keywordQueryTip')" style="width: 200px; display: flex; align-items: center;"
             clearable />
@@ -397,12 +470,15 @@ onBeforeUnmount(() => {
           <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
             <n-list hoverable clickable>
               <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
-                :class="mailItemClass(row)">
+                :class="[mailItemClass(row), { 'mail-list-unread': isMailUnread(row) }]">
                 <template #prefix v-if="multiActionMode">
                   <n-checkbox v-model:checked="row.checked" />
                 </template>
                 <n-thing :title="row.subject">
                   <template #description>
+                    <n-tag v-if="isMailUnread(row)" type="warning">
+                      {{ t('unread') }}
+                    </n-tag>
                     <n-tag type="info">
                       ID: {{ row.id }}
                     </n-tag>
@@ -461,6 +537,7 @@ onBeforeUnmount(() => {
             style="overflow: auto; max-height: 100vh;">
             <MailContentRenderer :mail="curMail" :showEMailTo="showEMailTo"
               :enableUserDeleteEmail="enableUserDeleteEmail" :showReply="showReply" :showSaveS3="showSaveS3"
+              :enableMailFlags="enableMailFlags" :onToggleUnread="toggleCurrentMailUnread"
               :onDelete="deleteMail" :onReply="replyMail" :onForward="forwardMail" :onSaveToS3="saveToS3Proxy" />
           </n-card>
           <n-card :bordered="false" embedded class="mail-item" v-else>
@@ -475,7 +552,7 @@ onBeforeUnmount(() => {
       <div v-else class="mail-list-scroll">
         <n-list hoverable clickable>
           <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
-            :class="mailItemClass(row)">
+            :class="[mailItemClass(row), { 'mail-list-unread': isMailUnread(row) }]">
             <template #prefix v-if="multiActionMode">
               <n-checkbox v-model:checked="row.checked" />
             </template>
@@ -487,6 +564,9 @@ onBeforeUnmount(() => {
               </template>
               <template #description>
                 <div class="mail-list-meta">
+                  <n-tag v-if="isMailUnread(row)" type="warning">
+                    {{ t('unread') }}
+                  </n-tag>
                   <n-tag type="info">
                     ID: {{ row.id }}
                   </n-tag>
@@ -529,16 +609,26 @@ onBeforeUnmount(() => {
         <n-button @click="backFirstPageAndRefresh" tertiary size="small" type="primary">
           {{ t('refresh') }}
         </n-button>
+        <n-button v-if="enableMailFlags && currentPageHasUnread" @click="markCurrentPageRead" tertiary size="small">
+          {{ t('markCurrentPageRead') }}
+        </n-button>
       </n-space>
       <div v-if="showFilterInput" style="padding: 0 10px; margin-top: 8px; margin-bottom: 10px;">
         <n-input v-model:value="localFilterKeyword"
           :placeholder="t('keywordQueryTip')" size="small" clearable />
       </div>
+      <div v-if="enableMailFlags" style="padding: 0 10px; margin-bottom: 10px;">
+        <n-select v-model:value="mailFlagFilter" :options="mailFlagFilterOptions" size="small" />
+      </div>
       <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
         <n-list hoverable clickable>
-          <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)">
+          <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
+            :class="{ 'mail-list-unread': isMailUnread(row) }">
             <n-thing :title="row.subject">
               <template #description>
+                <n-tag v-if="isMailUnread(row)" type="warning">
+                  {{ t('unread') }}
+                </n-tag>
                 <n-tag type="info">
                   ID: {{ row.id }}
                 </n-tag>
@@ -568,6 +658,7 @@ onBeforeUnmount(() => {
             <MailContentRenderer :mail="curMail" :showEMailTo="showEMailTo"
               :enableUserDeleteEmail="enableUserDeleteEmail" :showReply="showReply" :showSaveS3="showSaveS3"
               :useUTCDate="useUTCDate" :onDelete="deleteMail" :onReply="replyMail" :onForward="forwardMail"
+              :enableMailFlags="enableMailFlags" :onToggleUnread="toggleCurrentMailUnread"
               :onSaveToS3="saveToS3Proxy" />
           </n-card>
         </n-drawer-content>
@@ -674,6 +765,10 @@ onBeforeUnmount(() => {
 
 .mail-list-scroll :deep(.n-list-item__main) {
   min-width: 0;
+}
+
+.mail-list-unread :deep(.n-thing-header__title) {
+  font-weight: 700;
 }
 
 pre {
