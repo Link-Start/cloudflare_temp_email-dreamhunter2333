@@ -1,7 +1,6 @@
 import { Context } from "hono";
 import { handleMailListQuery } from "../common";
 import { resolveRawEmailRow } from "../gzip";
-import { serializeMailState } from "../mail_flags";
 import { getBooleanValue } from "../utils";
 
 export default {
@@ -33,8 +32,10 @@ export default {
             `SELECT * FROM raw_mails WHERE id = ?`
         ).bind(id).first();
         if (!result) return c.json(null);
-        const resolved = await resolveRawEmailRow(result);
-        return c.json(serializeMailState(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS)));
+        return c.json(await resolveRawEmailRow(
+            result,
+            getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
+        ));
     },
     deleteMail: async (c: Context<HonoCustomType>) => {
         const { id } = c.req.param();

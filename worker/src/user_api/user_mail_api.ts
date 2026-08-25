@@ -3,10 +3,8 @@ import i18n from "../i18n";
 import { handleMailListQuery } from "../common";
 import { getBooleanValue } from "../utils";
 import {
-    getMailReadStatusUpdateExpression,
-    parseMailReadStatusUpdate,
-    parseReadStatusFilter,
-    serializeMailState,
+    getReadStatusQuery,
+    applyMailReadStatusUpdate,
 } from "../mail_flags";
 
 export default {
@@ -19,14 +17,14 @@ export default {
             filterQuerys.push(`rm.address = ?`);
             filterParams.push(address);
         }
-        const readStatusFilter = parseReadStatusFilter(read_status);
-        if (readStatusFilter === null) return c.json({ error: "Invalid mail read status filter" }, 400);
-        if (readStatusFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+        const readStatusQuery = getReadStatusQuery(read_status, 'rm.flags');
+        if (readStatusQuery === null) return c.json({ error: "Invalid mail read status filter" }, 400);
+        if (readStatusQuery && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
             return c.json({ error: "Mail read status is disabled" }, 403);
         }
-        if (readStatusFilter) {
-            filterQuerys.push(`(COALESCE(rm.flags, 0) & ?) ${readStatusFilter.state === 'set' ? '!=' : '='} 0`);
-            filterParams.push(String(readStatusFilter.mask));
+        if (readStatusQuery) {
+            filterQuerys.push(readStatusQuery.clause);
+            filterParams.push(...readStatusQuery.params);
         }
         const fromQuery = ` FROM users_address ua`
             + ` JOIN address a ON a.id = ua.address_id`
@@ -61,43 +59,21 @@ export default {
         if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
             return c.json({ error: "Mail read status is disabled" }, 403);
         }
-        const update = parseMailReadStatusUpdate(await c.req.json().catch(() => null));
-        if (!update) return c.json({ error: "Invalid mail read status request" }, 400);
-
         const { user_id } = c.get("userPayload");
-        const placeholders = update.ids.map(() => '?').join(',');
-        const statusUpdate = getMailReadStatusUpdateExpression(update);
-        const condition = statusUpdate.condition ? ` AND ${statusUpdate.condition}` : '';
-        const result = await c.env.DB.prepare(
-            `UPDATE raw_mails`
-            + ` SET flags = ${statusUpdate.expression}`
-            + ` WHERE id IN (${placeholders})`
-            + ` AND EXISTS (`
-            + `SELECT 1 FROM users_address ua`
-            + ` JOIN address a ON a.id = ua.address_id`
-            + ` WHERE ua.user_id = ? AND a.name = raw_mails.address`
-            + `)${condition}`
-        ).bind(
-            ...statusUpdate.params,
-            ...update.ids,
-            user_id,
-            ...(statusUpdate.conditionParams ?? []),
-        ).run();
-        if (!result.success) return c.json({ success: false, changes: 0, results: [] }, 500);
-
-        const { results } = await c.env.DB.prepare(
-            `SELECT id, flags FROM raw_mails`
-            + ` WHERE id IN (${placeholders})`
-            + ` AND EXISTS (`
-            + `SELECT 1 FROM users_address ua`
-            + ` JOIN address a ON a.id = ua.address_id`
-            + ` WHERE ua.user_id = ? AND a.name = raw_mails.address`
-            + `)`
-        ).bind(...update.ids, user_id).all();
-        return c.json({
-            success: true,
-            changes: result.meta.changes ?? 0,
-            results: results.map(row => serializeMailState(row, true)),
-        });
+        const result = await applyMailReadStatusUpdate(
+            c.env.DB,
+            {
+                clause: `EXISTS (`
+                + `SELECT 1 FROM users_address ua`
+                + ` JOIN address a ON a.id = ua.address_id`
+                + ` WHERE ua.user_id = ? AND a.name = raw_mails.address`
+                + `)`,
+                params: [user_id],
+            },
+            await c.req.json().catch(() => null),
+        );
+        if (!result) return c.json({ error: "Invalid mail read status request" }, 400);
+        if (!result.success) return c.json(result, 500);
+        return c.json(result);
     }
 }

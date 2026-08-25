@@ -6,10 +6,8 @@ import { handleMailListQuery, deleteAddressWithData, updateAddressUpdatedAt } fr
 import { resolveRawEmailRow } from '../gzip'
 import { getSendBalanceState } from './send_balance';
 import {
-    getMailReadStatusUpdateExpression,
-    parseMailReadStatusUpdate,
-    parseReadStatusFilter,
-    serializeMailState,
+    getReadStatusQuery,
+    applyMailReadStatusUpdate,
 } from '../mail_flags';
 
 const listMails = async (c: Context<HonoCustomType>) => {
@@ -19,17 +17,17 @@ const listMails = async (c: Context<HonoCustomType>) => {
     }
     const { limit, offset, read_status } = c.req.query();
     if (Number.parseInt(offset) <= 0) updateAddressUpdatedAt(c, address);
-    const readStatusFilter = parseReadStatusFilter(read_status);
-    if (readStatusFilter === null) return c.json({ error: "Invalid mail read status filter" }, 400);
-    if (readStatusFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+    const readStatusQuery = getReadStatusQuery(read_status, 'flags');
+    if (readStatusQuery === null) return c.json({ error: "Invalid mail read status filter" }, 400);
+    if (readStatusQuery && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
         return c.json({ error: "Mail read status is disabled" }, 403);
     }
 
     const filters = [`address = ?`];
     const params = [address];
-    if (readStatusFilter) {
-        filters.push(`(COALESCE(flags, 0) & ?) ${readStatusFilter.state === 'set' ? '!=' : '='} 0`);
-        params.push(String(readStatusFilter.mask));
+    if (readStatusQuery) {
+        filters.push(readStatusQuery.clause);
+        params.push(...readStatusQuery.params);
     }
     const whereClause = filters.join(' AND ');
     return await handleMailListQuery(c,
@@ -46,8 +44,10 @@ const getMail = async (c: Context<HonoCustomType>) => {
         `SELECT * FROM raw_mails where id = ? and address = ?`
     ).bind(mail_id, address).first();
     if (!result) return c.json(null);
-    const resolved = await resolveRawEmailRow(result);
-    return c.json(serializeMailState(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS)));
+    return c.json(await resolveRawEmailRow(
+        result,
+        getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
+    ));
 };
 
 const deleteMail = async (c: Context<HonoCustomType>) => {
@@ -68,33 +68,15 @@ const updateMailReadStatus = async (c: Context<HonoCustomType>) => {
     if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
         return c.json({ error: "Mail read status is disabled" }, 403);
     }
-    const update = parseMailReadStatusUpdate(await c.req.json().catch(() => null));
-    if (!update) return c.json({ error: "Invalid mail read status request" }, 400);
-
     const { address } = c.get("jwtPayload");
-    const placeholders = update.ids.map(() => '?').join(',');
-    const statusUpdate = getMailReadStatusUpdateExpression(update);
-    const condition = statusUpdate.condition ? ` AND ${statusUpdate.condition}` : '';
-    const result = await c.env.DB.prepare(
-        `UPDATE raw_mails`
-        + ` SET flags = ${statusUpdate.expression}`
-        + ` WHERE address = ? AND id IN (${placeholders})${condition}`
-    ).bind(
-        ...statusUpdate.params,
-        address,
-        ...update.ids,
-        ...(statusUpdate.conditionParams ?? []),
-    ).run();
-    if (!result.success) return c.json({ success: false, changes: 0, results: [] }, 500);
-
-    const { results } = await c.env.DB.prepare(
-        `SELECT id, flags FROM raw_mails WHERE address = ? AND id IN (${placeholders})`
-    ).bind(address, ...update.ids).all();
-    return c.json({
-        success: true,
-        changes: result.meta.changes ?? 0,
-        results: results.map(row => serializeMailState(row, true)),
-    });
+    const result = await applyMailReadStatusUpdate(
+        c.env.DB,
+        { clause: 'address = ?', params: [address] },
+        await c.req.json().catch(() => null),
+    );
+    if (!result) return c.json({ error: "Invalid mail read status request" }, 400);
+    if (!result.success) return c.json(result, 500);
+    return c.json(result);
 };
 
 const getSettings = async (c: Context<HonoCustomType>) => {

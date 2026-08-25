@@ -7,7 +7,6 @@ import { unbindTelegramByAddress } from './telegram_api/common';
 import { CONSTANTS } from './constants';
 import { AddressCreationSettings, AdminWebhookSettings, ExtractResult, WebhookMail, WebhookSettings } from './models';
 import i18n from './i18n';
-import { serializeMailState } from './mail_flags';
 
 const DEFAULT_NAME_REGEX = /[^a-z0-9]/g;
 const DEFAULT_RANDOM_SUBDOMAIN_LENGTH = 8;
@@ -721,8 +720,9 @@ export const handleMailListQuery = async (
     const { results } = await c.env.DB.prepare(resultsQuery).bind(
         ...params, limit, offset
     ).all();
-    const resolvedResults = (await resolveRawEmailList(results)).map(row =>
-        serializeMailState(row, getBooleanValue(c.env.ENABLE_MAIL_FLAGS))
+    const resolvedResults = await resolveRawEmailList(
+        results,
+        getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
     );
     const count = offset == 0 ? await c.env.DB.prepare(
         countQuery

@@ -33,38 +33,25 @@ export const serializeMailState = <T extends Record<string, unknown>>(
     return result;
 };
 
-export const resolveInitialMailFlags = async (
-    enabled: boolean,
+const resolveInitialMailFlags = async (
     _env: Bindings,
     _address: string,
     _parsedEmailContext: ParsedEmailContext,
-): Promise<number | null> => {
-    if (!enabled) return null;
+): Promise<number> => {
     return MAIL_FLAGS.UNREAD;
 };
 
-type InsertRawMailParams = {
-    source: string;
-    address: string;
-    content: string | ArrayBuffer;
-    contentColumn: 'raw' | 'raw_blob';
-    messageId: string | null;
-    flags: number | null;
-};
-
-export const insertRawMail = async (
+export const updateInitialMailFlags = async (
     db: D1Database,
-    params: InsertRawMailParams,
+    enabled: boolean,
+    mailId: number,
+    env: Bindings,
+    address: string,
+    parsedEmailContext: ParsedEmailContext,
 ) => {
-    const { source, address, content, contentColumn, messageId, flags } = params;
-    if (flags === null) {
-        return db.prepare(
-            `INSERT INTO raw_mails (source, address, ${contentColumn}, message_id) VALUES (?, ?, ?, ?)`
-        ).bind(source, address, content, messageId).run();
-    }
-    return db.prepare(
-        `INSERT INTO raw_mails (source, address, ${contentColumn}, message_id, flags) VALUES (?, ?, ?, ?, ?)`
-    ).bind(source, address, content, messageId, flags).run();
+    if (!enabled || !Number.isInteger(mailId) || mailId <= 0) return;
+    const flags = await resolveInitialMailFlags(env, address, parsedEmailContext);
+    await db.prepare(`UPDATE raw_mails SET flags = ? WHERE id = ?`).bind(flags, mailId).run();
 };
 
 export type MailReadStatusUpdate = {
@@ -73,21 +60,26 @@ export type MailReadStatusUpdate = {
     action: MailReadStatusAction;
 };
 
-export type MailReadStatusFilter = {
-    mask: number;
-    state: 'set' | 'unset';
+export type MailReadStatusQuery = {
+    clause: string;
+    params: string[];
 };
 
-export const parseReadStatusFilter = (
+export const getReadStatusQuery = (
     value: string | undefined,
-): MailReadStatusFilter | undefined | null => {
+    column: 'flags' | 'rm.flags',
+): MailReadStatusQuery | undefined | null => {
     if (value === undefined || value === 'all') return undefined;
-    if (value === 'unread') return { mask: MAIL_FLAGS.UNREAD, state: 'set' };
-    if (value === 'read') return { mask: MAIL_FLAGS.UNREAD, state: 'unset' };
+    if (value === 'unread') {
+        return { clause: `(COALESCE(${column}, 0) & ?) != 0`, params: [String(MAIL_FLAGS.UNREAD)] };
+    }
+    if (value === 'read') {
+        return { clause: `(COALESCE(${column}, 0) & ?) = 0`, params: [String(MAIL_FLAGS.UNREAD)] };
+    }
     return null;
 };
 
-export const parseMailReadStatusUpdate = (value: unknown): MailReadStatusUpdate | null => {
+const parseMailReadStatusUpdate = (value: unknown): MailReadStatusUpdate | null => {
     if (!value || typeof value !== 'object') return null;
     const body = value as Record<string, unknown>;
     if (!Array.isArray(body.ids) || body.ids.length === 0 || body.ids.length > 100) return null;
@@ -101,7 +93,7 @@ export const parseMailReadStatusUpdate = (value: unknown): MailReadStatusUpdate 
     return { ids, mask: MAIL_FLAGS.UNREAD, action: body.action };
 };
 
-export const getMailReadStatusUpdateExpression = (
+const getMailReadStatusUpdateExpression = (
     update: MailReadStatusUpdate,
     column = 'flags',
 ): { expression: string; params: number[]; condition?: string; conditionParams?: number[] } => {
@@ -124,5 +116,43 @@ export const getMailReadStatusUpdateExpression = (
     return {
         expression: `((COALESCE(${column}, 0) | ?) - (COALESCE(${column}, 0) & ?))`,
         params: [update.mask, update.mask],
+    };
+};
+
+type MailScope = {
+    clause: string;
+    params: (string | number)[];
+};
+
+export const applyMailReadStatusUpdate = async (
+    db: D1Database,
+    scope: MailScope,
+    value: unknown,
+) => {
+    const update = parseMailReadStatusUpdate(value);
+    if (!update) return null;
+
+    const placeholders = update.ids.map(() => '?').join(',');
+    const statusUpdate = getMailReadStatusUpdateExpression(update);
+    const condition = statusUpdate.condition ? ` AND ${statusUpdate.condition}` : '';
+    const result = await db.prepare(
+        `UPDATE raw_mails SET flags = ${statusUpdate.expression}`
+        + ` WHERE id IN (${placeholders}) AND (${scope.clause})${condition}`
+    ).bind(
+        ...statusUpdate.params,
+        ...update.ids,
+        ...scope.params,
+        ...(statusUpdate.conditionParams ?? []),
+    ).run();
+    if (!result.success) return { success: false, changes: 0, results: [] };
+
+    const { results } = await db.prepare(
+        `SELECT id, flags FROM raw_mails`
+        + ` WHERE id IN (${placeholders}) AND (${scope.clause})`
+    ).bind(...update.ids, ...scope.params).all();
+    return {
+        success: true,
+        changes: result.meta.changes ?? 0,
+        results: results.map(row => serializeMailState(row, true)),
     };
 };
