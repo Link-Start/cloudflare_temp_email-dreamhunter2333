@@ -19,21 +19,21 @@ res = requests.get(
 
 **注意**：`/api/mails` 按设计返回的是原始 RFC822 数据（如 `source`/`raw`），不保证直接包含 `subject`、`text`、`html` 等已解析字段。若要直接读取正文，请在客户端侧解析 `raw`（例如 `mail-parser-wasm`、`postal-mime`）。
 
-## 邮件 Flag API
+## 邮件已读状态 API
 
-启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应会包含 `mail_flags`，例如 `{"unread": true}`。数据库位掩码、历史 `NULL` 兼容和状态计算全部由后端处理，客户端不需要了解具体 bit。
+启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应会包含布尔字段 `unread`。数据库存储、历史 `NULL` 兼容和状态计算全部由后端处理。
 
-地址 JWT 使用 `PATCH /api/mails/flags` 批量操作状态。每次最多传入 100 个邮件 ID；当前支持 `unread`，操作可为 `set`、`clear` 或 `toggle`。
+地址 JWT 使用 `PATCH /api/mails/read-status` 批量操作状态。每次最多传入 100 个邮件 ID；`action` 可为 `read`、`unread` 或 `toggle`。
 
 ```python
 requests.patch(
-    "https://<你的worker地址>/api/mails/flags",
+    "https://<你的worker地址>/api/mails/read-status",
     headers={"Authorization": f"Bearer {你的JWT密码}"},
-    json={"ids": [1, 2], "flag": "unread", "action": "clear"}
+    json={"ids": [1, 2], "action": "read"}
 )
 ```
 
-用户 JWT 使用相同请求体访问 `PATCH /user_api/mails/flags`，只能修改该用户已绑定地址的邮件。接口返回更新后的 `mail_flags`；服务端始终保留请求未涉及的其他 Flag 位。
+用户 JWT 使用相同请求体访问 `PATCH /user_api/mails/read-status`，只能修改该用户已绑定地址的邮件。接口返回更新后的 `unread` 状态。
 
 邮件列表使用语义化的 `read_status` 查询已读状态。例如查询未读邮件：
 
@@ -41,7 +41,7 @@ requests.patch(
 GET /api/mails?limit=20&offset=0&read_status=unread
 ```
 
-查询已读邮件使用 `read_status=read`。`/user_api/mails` 支持相同参数。后续扩展其他系统或自定义 Flag 时仍由后端负责名称到 bit 的映射。
+查询已读邮件使用 `read_status=read`，`/user_api/mails` 支持相同参数。后续邮件分组也由后端返回分组定义和邮件归属，客户端只负责展示。
 
 ## admin 邮件 API
 

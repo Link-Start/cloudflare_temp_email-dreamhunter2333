@@ -19,21 +19,21 @@ res = requests.get(
 
 **Note**: `/api/mails` returns raw RFC822 data by design (for example `source`/`raw`), and it does not guarantee parsed fields such as `subject`, `text`, or `html`. Parse the raw source on the client side (for example with `mail-parser-wasm` or `postal-mime`) if you need readable message content.
 
-## Mail Flags API
+## Mail Read Status API
 
-After enabling `ENABLE_MAIL_FLAGS` and running the database migration, each mail response includes `mail_flags`, for example `{"unread": true}`. The backend owns bitmask mapping, historical `NULL` compatibility, and state calculation; clients do not need to know bit positions.
+After enabling `ENABLE_MAIL_FLAGS` and running the database migration, each mail response includes the boolean field `unread`. The backend owns storage, historical `NULL` compatibility, and state calculation.
 
-With an Address JWT, use `PATCH /api/mails/flags` to update up to 100 mail IDs. The supported flag is currently `unread`, and its action can be `set`, `clear`, or `toggle`.
+With an Address JWT, use `PATCH /api/mails/read-status` to update up to 100 mail IDs. The `action` can be `read`, `unread`, or `toggle`.
 
 ```python
 requests.patch(
-    "https://<your-worker-address>/api/mails/flags",
+    "https://<your-worker-address>/api/mails/read-status",
     headers={"Authorization": f"Bearer {your-JWT-password}"},
-    json={"ids": [1, 2], "flag": "unread", "action": "clear"}
+    json={"ids": [1, 2], "action": "read"}
 )
 ```
 
-With a User JWT, send the same body to `PATCH /user_api/mails/flags`. Only mail belonging to addresses bound to that user can be changed. The response contains the updated `mail_flags`, and all unrelated bits are preserved by the server.
+With a User JWT, send the same body to `PATCH /user_api/mails/read-status`. Only mail belonging to addresses bound to that user can be changed. The response contains the updated `unread` state.
 
 Mail-list endpoints use the semantic `read_status` filter. For example, list unread mail with:
 
@@ -41,7 +41,7 @@ Mail-list endpoints use the semantic `read_status` filter. For example, list unr
 GET /api/mails?limit=20&offset=0&read_status=unread
 ```
 
-Use `read_status=read` for read mail. `/user_api/mails` accepts the same parameter. Future system and custom flags will still be mapped from names to bits by the backend.
+Use `read_status=read` for read mail. `/user_api/mails` accepts the same parameter. Future mail groups will also be returned by the backend as group definitions and mail membership; clients only render them.
 
 ## Admin Mail API
 

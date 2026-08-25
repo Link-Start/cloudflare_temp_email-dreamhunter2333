@@ -6,11 +6,10 @@ import { handleMailListQuery, deleteAddressWithData, updateAddressUpdatedAt } fr
 import { resolveRawEmailRow } from '../gzip'
 import { getSendBalanceState } from './send_balance';
 import {
-    getMailFlagUpdateExpression,
-    parseMailFlagFilter,
-    parseMailFlagUpdate,
+    getMailReadStatusUpdateExpression,
+    parseMailReadStatusUpdate,
     parseReadStatusFilter,
-    serializeMailFlags,
+    serializeMailState,
 } from '../mail_flags';
 
 const listMails = async (c: Context<HonoCustomType>) => {
@@ -18,24 +17,19 @@ const listMails = async (c: Context<HonoCustomType>) => {
     if (!address) {
         return c.json({ "error": "No address" }, 400)
     }
-    const { limit, offset, flag, flag_state, read_status } = c.req.query();
+    const { limit, offset, read_status } = c.req.query();
     if (Number.parseInt(offset) <= 0) updateAddressUpdatedAt(c, address);
-    if (read_status !== undefined && (flag !== undefined || flag_state !== undefined)) {
-        return c.json({ error: "Conflicting mail flag filters" }, 400);
-    }
-    const flagFilter = read_status === undefined
-        ? parseMailFlagFilter(flag, flag_state)
-        : parseReadStatusFilter(read_status);
-    if (flagFilter === null) return c.json({ error: "Invalid mail flag filter" }, 400);
-    if (flagFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
-        return c.json({ error: "Mail flags are disabled" }, 403);
+    const readStatusFilter = parseReadStatusFilter(read_status);
+    if (readStatusFilter === null) return c.json({ error: "Invalid mail read status filter" }, 400);
+    if (readStatusFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+        return c.json({ error: "Mail read status is disabled" }, 403);
     }
 
     const filters = [`address = ?`];
     const params = [address];
-    if (flagFilter) {
-        filters.push(`(COALESCE(flags, 0) & ?) ${flagFilter.state === 'set' ? '!=' : '='} 0`);
-        params.push(String(flagFilter.mask));
+    if (readStatusFilter) {
+        filters.push(`(COALESCE(flags, 0) & ?) ${readStatusFilter.state === 'set' ? '!=' : '='} 0`);
+        params.push(String(readStatusFilter.mask));
     }
     const whereClause = filters.join(' AND ');
     return await handleMailListQuery(c,
@@ -53,7 +47,7 @@ const getMail = async (c: Context<HonoCustomType>) => {
     ).bind(mail_id, address).first();
     if (!result) return c.json(null);
     const resolved = await resolveRawEmailRow(result);
-    return c.json(serializeMailFlags(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS)));
+    return c.json(serializeMailState(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS)));
 };
 
 const deleteMail = async (c: Context<HonoCustomType>) => {
@@ -70,26 +64,26 @@ const deleteMail = async (c: Context<HonoCustomType>) => {
     return c.json({ success });
 };
 
-const updateMailFlags = async (c: Context<HonoCustomType>) => {
+const updateMailReadStatus = async (c: Context<HonoCustomType>) => {
     if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
-        return c.json({ error: "Mail flags are disabled" }, 403);
+        return c.json({ error: "Mail read status is disabled" }, 403);
     }
-    const update = parseMailFlagUpdate(await c.req.json().catch(() => null));
-    if (!update) return c.json({ error: "Invalid mail flags request" }, 400);
+    const update = parseMailReadStatusUpdate(await c.req.json().catch(() => null));
+    if (!update) return c.json({ error: "Invalid mail read status request" }, 400);
 
     const { address } = c.get("jwtPayload");
     const placeholders = update.ids.map(() => '?').join(',');
-    const flagUpdate = getMailFlagUpdateExpression(update);
-    const condition = flagUpdate.condition ? ` AND ${flagUpdate.condition}` : '';
+    const statusUpdate = getMailReadStatusUpdateExpression(update);
+    const condition = statusUpdate.condition ? ` AND ${statusUpdate.condition}` : '';
     const result = await c.env.DB.prepare(
         `UPDATE raw_mails`
-        + ` SET flags = ${flagUpdate.expression}`
+        + ` SET flags = ${statusUpdate.expression}`
         + ` WHERE address = ? AND id IN (${placeholders})${condition}`
     ).bind(
-        ...flagUpdate.params,
+        ...statusUpdate.params,
         address,
         ...update.ids,
-        ...(flagUpdate.conditionParams ?? []),
+        ...(statusUpdate.conditionParams ?? []),
     ).run();
     if (!result.success) return c.json({ success: false, changes: 0, results: [] }, 500);
 
@@ -99,7 +93,7 @@ const updateMailFlags = async (c: Context<HonoCustomType>) => {
     return c.json({
         success: true,
         changes: result.meta.changes ?? 0,
-        results: results.map(row => serializeMailFlags(row, true)),
+        results: results.map(row => serializeMailState(row, true)),
     });
 };
 
@@ -177,6 +171,6 @@ const clearSentItems = async (c: Context<HonoCustomType>) => {
 };
 
 export default {
-    listMails, getMail, deleteMail, updateMailFlags,
+    listMails, getMail, deleteMail, updateMailReadStatus,
     getSettings, deleteAddress, clearInbox, clearSentItems
 };

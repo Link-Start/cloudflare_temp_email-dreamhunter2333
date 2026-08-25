@@ -20,12 +20,12 @@ const queryMail = () => {
     mailBoxKey.value = Date.now();
 }
 
-const fetchMailData = async (limit, offset, mailFlagFilter = 'all') => {
+const fetchMailData = async (limit, offset, readStatus = 'all') => {
     return await api.fetch(
         `/user_api/mails`
         + `?limit=${limit}`
         + `&offset=${offset}`
-        + (mailFlagFilter === 'all' ? '' : `&read_status=${mailFlagFilter}`)
+        + (readStatus === 'all' ? '' : `&read_status=${readStatus}`)
         + (addressFilter.value ? `&address=${addressFilter.value}` : '')
     );
 }
@@ -51,10 +51,10 @@ const deleteMail = async (curMailId) => {
     await api.fetch(`/user_api/mails/${curMailId}`, { method: 'DELETE' });
 };
 
-const updateMailFlags = async (ids, flag, action) => {
-    return await api.fetch(`/user_api/mails/flags`, {
+const updateMailReadStatus = async (ids, action) => {
+    return await api.fetch(`/user_api/mails/read-status`, {
         method: 'PATCH',
-        body: JSON.stringify({ ids, flag, action })
+        body: JSON.stringify({ ids, action })
     });
 };
 
@@ -78,7 +78,7 @@ onMounted(() => {
         </n-input-group>
         <div style="margin-top: 10px;"></div>
         <MailBox :key="mailBoxKey" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail" :fetchMailData="fetchMailData"
-            :deleteMail="deleteMail" :showFilterInput="true" :enableMailFlags="openSettings.enableMailFlags"
-            :updateMailFlags="updateMailFlags" />
+            :deleteMail="deleteMail" :showFilterInput="true" :enableReadStatus="openSettings.enableReadStatus"
+            :updateMailReadStatus="updateMailReadStatus" />
     </div>
 </template>

@@ -3,36 +3,30 @@ import i18n from "../i18n";
 import { handleMailListQuery } from "../common";
 import { getBooleanValue } from "../utils";
 import {
-    getMailFlagUpdateExpression,
-    parseMailFlagFilter,
-    parseMailFlagUpdate,
+    getMailReadStatusUpdateExpression,
+    parseMailReadStatusUpdate,
     parseReadStatusFilter,
-    serializeMailFlags,
+    serializeMailState,
 } from "../mail_flags";
 
 export default {
     getMails: async (c: Context<HonoCustomType>) => {
         const { user_id } = c.get("userPayload");
-        const { address, limit, offset, flag, flag_state, read_status } = c.req.query();
+        const { address, limit, offset, read_status } = c.req.query();
         const filterQuerys = [`ua.user_id = ?`];
         const filterParams = [String(user_id)];
         if (address) {
             filterQuerys.push(`rm.address = ?`);
             filterParams.push(address);
         }
-        if (read_status !== undefined && (flag !== undefined || flag_state !== undefined)) {
-            return c.json({ error: "Conflicting mail flag filters" }, 400);
+        const readStatusFilter = parseReadStatusFilter(read_status);
+        if (readStatusFilter === null) return c.json({ error: "Invalid mail read status filter" }, 400);
+        if (readStatusFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+            return c.json({ error: "Mail read status is disabled" }, 403);
         }
-        const flagFilter = read_status === undefined
-            ? parseMailFlagFilter(flag, flag_state)
-            : parseReadStatusFilter(read_status);
-        if (flagFilter === null) return c.json({ error: "Invalid mail flag filter" }, 400);
-        if (flagFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
-            return c.json({ error: "Mail flags are disabled" }, 403);
-        }
-        if (flagFilter) {
-            filterQuerys.push(`(COALESCE(rm.flags, 0) & ?) ${flagFilter.state === 'set' ? '!=' : '='} 0`);
-            filterParams.push(String(flagFilter.mask));
+        if (readStatusFilter) {
+            filterQuerys.push(`(COALESCE(rm.flags, 0) & ?) ${readStatusFilter.state === 'set' ? '!=' : '='} 0`);
+            filterParams.push(String(readStatusFilter.mask));
         }
         const fromQuery = ` FROM users_address ua`
             + ` JOIN address a ON a.id = ua.address_id`
@@ -63,20 +57,20 @@ export default {
             success: success
         })
     },
-    updateMailFlags: async (c: Context<HonoCustomType>) => {
+    updateMailReadStatus: async (c: Context<HonoCustomType>) => {
         if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
-            return c.json({ error: "Mail flags are disabled" }, 403);
+            return c.json({ error: "Mail read status is disabled" }, 403);
         }
-        const update = parseMailFlagUpdate(await c.req.json().catch(() => null));
-        if (!update) return c.json({ error: "Invalid mail flags request" }, 400);
+        const update = parseMailReadStatusUpdate(await c.req.json().catch(() => null));
+        if (!update) return c.json({ error: "Invalid mail read status request" }, 400);
 
         const { user_id } = c.get("userPayload");
         const placeholders = update.ids.map(() => '?').join(',');
-        const flagUpdate = getMailFlagUpdateExpression(update);
-        const condition = flagUpdate.condition ? ` AND ${flagUpdate.condition}` : '';
+        const statusUpdate = getMailReadStatusUpdateExpression(update);
+        const condition = statusUpdate.condition ? ` AND ${statusUpdate.condition}` : '';
         const result = await c.env.DB.prepare(
             `UPDATE raw_mails`
-            + ` SET flags = ${flagUpdate.expression}`
+            + ` SET flags = ${statusUpdate.expression}`
             + ` WHERE id IN (${placeholders})`
             + ` AND EXISTS (`
             + `SELECT 1 FROM users_address ua`
@@ -84,10 +78,10 @@ export default {
             + ` WHERE ua.user_id = ? AND a.name = raw_mails.address`
             + `)${condition}`
         ).bind(
-            ...flagUpdate.params,
+            ...statusUpdate.params,
             ...update.ids,
             user_id,
-            ...(flagUpdate.conditionParams ?? []),
+            ...(statusUpdate.conditionParams ?? []),
         ).run();
         if (!result.success) return c.json({ success: false, changes: 0, results: [] }, 500);
 
@@ -103,7 +97,7 @@ export default {
         return c.json({
             success: true,
             changes: result.meta.changes ?? 0,
-            results: results.map(row => serializeMailFlags(row, true)),
+            results: results.map(row => serializeMailState(row, true)),
         });
     }
 }

@@ -2,7 +2,7 @@ import { Context } from 'hono'
 
 import { commonParseMail, handleMailListQuery, updateAddressUpdatedAt } from '../common'
 import { resolveRawEmailRow } from '../gzip'
-import { serializeMailFlags } from '../mail_flags';
+import { serializeMailState } from '../mail_flags';
 import { getBooleanValue } from '../utils';
 
 const toParsedMailRow = async (row: Record<string, unknown>): Promise<Record<string, unknown>> => {
@@ -48,7 +48,7 @@ const getParsedMail = async (c: Context<HonoCustomType>) => {
     ).bind(mail_id, address).first();
     if (!row) return c.json(null);
     const resolved = await resolveRawEmailRow(row);
-    const serialized = serializeMailFlags(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS));
+    const serialized = serializeMailState(resolved, getBooleanValue(c.env.ENABLE_MAIL_FLAGS));
     return c.json(await toParsedMailRow(serialized));
 };
 

@@ -32,13 +32,13 @@ const SendMail = defineAsyncComponent(() => {
 
 const { t } = useScopedI18n('views.Index')
 
-const fetchMailData = async (limit, offset, mailFlagFilter = 'all') => {
+const fetchMailData = async (limit, offset, readStatus = 'all') => {
   if (mailIdQuery.value > 0) {
     const singleMail = await api.fetch(`/api/mail/${mailIdQuery.value}`);
     if (singleMail) return { results: [singleMail], count: 1 };
     return { results: [], count: 0 };
   }
-  const readStatusQuery = mailFlagFilter === 'all' ? '' : `&read_status=${mailFlagFilter}`
+  const readStatusQuery = readStatus === 'all' ? '' : `&read_status=${readStatus}`
   return await api.fetch(
     `/api/mails?limit=${limit}&offset=${offset}${readStatusQuery}`
   );
@@ -48,10 +48,10 @@ const deleteMail = async (curMailId) => {
   await api.fetch(`/api/mails/${curMailId}`, { method: 'DELETE' });
 };
 
-const updateMailFlags = async (ids, flag, action) => {
-  return await api.fetch(`/api/mails/flags`, {
+const updateMailReadStatus = async (ids, action) => {
+  return await api.fetch(`/api/mails/read-status`, {
     method: 'PATCH',
-    body: JSON.stringify({ ids, flag, action })
+    body: JSON.stringify({ ids, action })
   });
 };
 
@@ -138,7 +138,7 @@ onMounted(() => {
           <MailBox :key="mailBoxKey" :showEMailTo="false" :showReply="openSettings.enableSendMail" :showSaveS3="openSettings.isS3Enabled"
             :saveToS3="saveToS3" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail"
             :fetchMailData="fetchMailData" :deleteMail="deleteMail" :showFilterInput="true"
-            :enableMailFlags="openSettings.enableMailFlags" :updateMailFlags="updateMailFlags" />
+            :enableReadStatus="openSettings.enableReadStatus" :updateMailReadStatus="updateMailReadStatus" />
         </n-tab-pane>
         <n-tab-pane v-if="openSettings.enableSendMail" name="sendbox" :tab="t('sendbox')">
           <SendBox :fetchMailData="fetchSenboxData" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail"

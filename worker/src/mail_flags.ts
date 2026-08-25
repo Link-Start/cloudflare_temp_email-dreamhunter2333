@@ -10,17 +10,7 @@ export const MAIL_FLAGS = {
 export const CUSTOM_MAIL_FLAG_OFFSET = 10;
 export const CUSTOM_MAIL_FLAG_COUNT = 10;
 
-const MAIL_FLAG_MASKS = {
-    unread: MAIL_FLAGS.UNREAD,
-} as const;
-
-type MailFlagName = keyof typeof MAIL_FLAG_MASKS;
-type MailFlagAction = 'set' | 'clear' | 'toggle';
-
-const isMailFlagName = (value: unknown): value is MailFlagName => {
-    return typeof value === 'string'
-        && Object.prototype.hasOwnProperty.call(MAIL_FLAG_MASKS, value);
-};
+type MailReadStatusAction = 'read' | 'unread' | 'toggle';
 
 export const getCustomMailFlag = (slot: number): number => {
     if (!Number.isInteger(slot) || slot < 0 || slot >= CUSTOM_MAIL_FLAG_COUNT) {
@@ -29,7 +19,7 @@ export const getCustomMailFlag = (slot: number): number => {
     return 1 << (CUSTOM_MAIL_FLAG_OFFSET + slot);
 };
 
-export const serializeMailFlags = <T extends Record<string, unknown>>(
+export const serializeMailState = <T extends Record<string, unknown>>(
     row: T,
     enabled: boolean,
 ): T => {
@@ -39,9 +29,7 @@ export const serializeMailFlags = <T extends Record<string, unknown>>(
     if (!enabled) {
         return result;
     }
-    result.mail_flags = {
-        unread: (flags & MAIL_FLAGS.UNREAD) !== 0,
-    };
+    result.unread = (flags & MAIL_FLAGS.UNREAD) !== 0;
     return result;
 };
 
@@ -79,38 +67,27 @@ export const insertRawMail = async (
     ).bind(source, address, content, messageId, flags).run();
 };
 
-export type MailFlagUpdate = {
+export type MailReadStatusUpdate = {
     ids: number[];
-    flag: MailFlagName;
     mask: number;
-    action: MailFlagAction;
+    action: MailReadStatusAction;
 };
 
-export type MailFlagFilter = {
+export type MailReadStatusFilter = {
     mask: number;
     state: 'set' | 'unset';
 };
 
-export const parseMailFlagFilter = (
-    flagValue: string | undefined,
-    stateValue: string | undefined,
-): MailFlagFilter | undefined | null => {
-    if (flagValue === undefined && stateValue === undefined) return undefined;
-    if (!isMailFlagName(flagValue)) return null;
-    if (stateValue !== 'set' && stateValue !== 'unset') return null;
-    return { mask: MAIL_FLAG_MASKS[flagValue], state: stateValue };
-};
-
 export const parseReadStatusFilter = (
     value: string | undefined,
-): MailFlagFilter | undefined | null => {
+): MailReadStatusFilter | undefined | null => {
     if (value === undefined || value === 'all') return undefined;
     if (value === 'unread') return { mask: MAIL_FLAGS.UNREAD, state: 'set' };
     if (value === 'read') return { mask: MAIL_FLAGS.UNREAD, state: 'unset' };
     return null;
 };
 
-export const parseMailFlagUpdate = (value: unknown): MailFlagUpdate | null => {
+export const parseMailReadStatusUpdate = (value: unknown): MailReadStatusUpdate | null => {
     if (!value || typeof value !== 'object') return null;
     const body = value as Record<string, unknown>;
     if (!Array.isArray(body.ids) || body.ids.length === 0 || body.ids.length > 100) return null;
@@ -119,18 +96,16 @@ export const parseMailFlagUpdate = (value: unknown): MailFlagUpdate | null => {
     const ids = [...new Set(body.ids.map(Number))];
     if (ids.some(id => !Number.isInteger(id) || id <= 0)) return null;
 
-    if (!isMailFlagName(body.flag)) return null;
-    if (body.action !== 'set' && body.action !== 'clear' && body.action !== 'toggle') return null;
+    if (body.action !== 'read' && body.action !== 'unread' && body.action !== 'toggle') return null;
 
-    const flag = body.flag;
-    return { ids, flag, mask: MAIL_FLAG_MASKS[flag], action: body.action };
+    return { ids, mask: MAIL_FLAGS.UNREAD, action: body.action };
 };
 
-export const getMailFlagUpdateExpression = (
-    update: MailFlagUpdate,
+export const getMailReadStatusUpdateExpression = (
+    update: MailReadStatusUpdate,
     column = 'flags',
 ): { expression: string; params: number[]; condition?: string; conditionParams?: number[] } => {
-    if (update.action === 'set') {
+    if (update.action === 'unread') {
         return {
             expression: `(COALESCE(${column}, 0) | ?)`,
             params: [update.mask],
@@ -138,7 +113,7 @@ export const getMailFlagUpdateExpression = (
             conditionParams: [update.mask],
         };
     }
-    if (update.action === 'clear') {
+    if (update.action === 'read') {
         return {
             expression: `(COALESCE(${column}, 0) & ~?)`,
             params: [update.mask],

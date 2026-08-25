@@ -50,13 +50,13 @@ const fetchMails = async () => {
         totalCount.value = count > 0 ? count : totalCount.value;
         const rawMail = results && results.length > 0 ? results[0] : null
         currentMail.value = rawMail ? await processItem(rawMail) : null
-        if (openSettings.value.enableMailFlags && rawMail) {
-            const response = await api.fetch(`/api/mails/flags`, {
+        if (openSettings.value.enableReadStatus && rawMail) {
+            const response = await api.fetch(`/api/mails/read-status`, {
                 method: 'PATCH',
-                body: JSON.stringify({ ids: [rawMail.id], flag: 'unread', action: 'clear' })
+                body: JSON.stringify({ ids: [rawMail.id], action: 'read' })
             })
             const updatedMail = response.results?.[0]
-            if (updatedMail) currentMail.value.mail_flags = updatedMail.mail_flags
+            if (updatedMail) currentMail.value.unread = updatedMail.unread
         }
     } catch (error) {
         console.error('Failed to fetch mails:', error)
@@ -65,18 +65,17 @@ const fetchMails = async () => {
 }
 
 const toggleCurrentMailUnread = async () => {
-    if (!currentMail.value || !openSettings.value.enableMailFlags) return
+    if (!currentMail.value || !openSettings.value.enableReadStatus) return
     try {
-        const response = await api.fetch(`/api/mails/flags`, {
+        const response = await api.fetch(`/api/mails/read-status`, {
             method: 'PATCH',
             body: JSON.stringify({
                 ids: [currentMail.value.id],
-                flag: 'unread',
                 action: 'toggle',
             })
         })
         const updatedMail = response.results?.[0]
-        if (updatedMail) currentMail.value.mail_flags = updatedMail.mail_flags
+        if (updatedMail) currentMail.value.unread = updatedMail.unread
     } catch (error) {
         message.error(error.message || 'error')
     }
@@ -246,7 +245,7 @@ onBeforeUnmount(() => {
                     <div style="margin-top: 16px;">
                         <MailContentRenderer :mail="currentMail" :showEMailTo="false" :showReply="false"
                             :enableUserDeleteEmail="openSettings.enableUserDeleteEmail" :showSaveS3="false"
-                            :enableMailFlags="openSettings.enableMailFlags" :onToggleUnread="toggleCurrentMailUnread"
+                            :enableReadStatus="openSettings.enableReadStatus" :onToggleUnread="toggleCurrentMailUnread"
                             :onDelete="deleteMail" />
                     </div>
                 </div>
