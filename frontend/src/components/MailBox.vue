@@ -8,7 +8,6 @@ import { useIsMobile } from '../utils/composables'
 import { processItem } from '../utils/email-parser'
 import { utcToLocalDate } from '../utils';
 import { buildReplyModel, buildForwardModel } from '../utils/mail-actions'
-import { MAIL_FLAGS, hasMailFlag } from '../utils/mail-flags'
 import MailContentRenderer from "./MailContentRenderer.vue";
 import AiExtractInfo from "./AiExtractInfo.vue";
 
@@ -107,7 +106,7 @@ const data = computed(() => {
 })
 
 const isMailUnread = (mail) => {
-  return props.enableMailFlags && hasMailFlag(mail?.flags, MAIL_FLAGS.UNREAD)
+  return props.enableMailFlags && mail?.mail_flags?.unread === true
 }
 
 const currentPageHasUnread = computed(() => rawData.value.some(isMailUnread))
@@ -117,36 +116,28 @@ const mailFlagFilterOptions = computed(() => [
   { label: t('read'), value: 'read' },
 ])
 
-const setMailsUnread = async (mails, unread) => {
-  const changedMails = mails.filter(mail => isMailUnread(mail) !== unread)
-  if (changedMails.length === 0) return true
-
-  changedMails.forEach(mail => {
-    const flags = Number(mail.flags ?? 0)
-    mail.flags = unread ? flags | MAIL_FLAGS.UNREAD : flags & ~MAIL_FLAGS.UNREAD
-  })
+const updateUnreadState = async (mails, action) => {
+  if (mails.length === 0) return true
   try {
-    await props.updateMailFlags(
-      changedMails.map(mail => mail.id),
-      unread ? MAIL_FLAGS.UNREAD : 0,
-      unread ? 0 : MAIL_FLAGS.UNREAD
-    )
+    const response = await props.updateMailFlags(mails.map(mail => mail.id), 'unread', action)
+    const results = response?.results ?? []
+    const resultById = new Map(results.map(result => [result.id, result]))
+    mails.forEach(mail => {
+      const result = resultById.get(mail.id)
+      if (result) mail.mail_flags = result.mail_flags
+    })
     return true
   } catch (error) {
-    changedMails.forEach(mail => {
-      const flags = Number(mail.flags ?? 0)
-      mail.flags = unread ? flags & ~MAIL_FLAGS.UNREAD : flags | MAIL_FLAGS.UNREAD
-    })
     message.error(error.message || "error")
     return false
   }
 }
 
-const markMailsRead = async (mails) => setMailsUnread(mails, false)
+const markMailsRead = async (mails) => updateUnreadState(mails, 'clear')
 
 const toggleCurrentMailUnread = async () => {
   if (!curMail.value) return
-  await setMailsUnread([curMail.value], !isMailUnread(curMail.value))
+  await updateUnreadState([curMail.value], 'toggle')
 }
 
 const openMail = async (mail) => {

@@ -6,7 +6,6 @@ import { useRoute } from 'vue-router'
 import { useGlobalState } from '../store'
 import { api } from '../api'
 import { useIsMobile } from '../utils/composables'
-import { getMailFlagFilterQuery } from '../utils/mail-flags'
 import { FullscreenExitOutlined } from '@vicons/material'
 
 import AddressBar from './index/AddressBar.vue';
@@ -39,8 +38,9 @@ const fetchMailData = async (limit, offset, mailFlagFilter = 'all') => {
     if (singleMail) return { results: [singleMail], count: 1 };
     return { results: [], count: 0 };
   }
+  const readStatusQuery = mailFlagFilter === 'all' ? '' : `&read_status=${mailFlagFilter}`
   return await api.fetch(
-    `/api/mails?limit=${limit}&offset=${offset}${getMailFlagFilterQuery(mailFlagFilter)}`
+    `/api/mails?limit=${limit}&offset=${offset}${readStatusQuery}`
   );
 };
 
@@ -48,10 +48,10 @@ const deleteMail = async (curMailId) => {
   await api.fetch(`/api/mails/${curMailId}`, { method: 'DELETE' });
 };
 
-const updateMailFlags = async (ids, add, remove) => {
-  await api.fetch(`/api/mails/flags`, {
+const updateMailFlags = async (ids, flag, action) => {
+  return await api.fetch(`/api/mails/flags`, {
     method: 'PATCH',
-    body: JSON.stringify({ ids, add, remove })
+    body: JSON.stringify({ ids, flag, action })
   });
 };
 

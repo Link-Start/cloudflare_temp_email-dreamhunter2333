@@ -21,27 +21,27 @@ res = requests.get(
 
 ## Mail Flags API
 
-After enabling `ENABLE_MAIL_FLAGS` and running the database migration, each mail response includes an integer `flags` bitmask. Bit 0 currently means `UNREAD`: `1` is unread, while `NULL` or `0` is treated as read.
+After enabling `ENABLE_MAIL_FLAGS` and running the database migration, each mail response includes `mail_flags`, for example `{"unread": true}`. The backend owns bitmask mapping, historical `NULL` compatibility, and state calculation; clients do not need to know bit positions.
 
-With an Address JWT, use `PATCH /api/mails/flags` to add or remove flags for up to 100 mail IDs. Only the `UNREAD` bit is currently mutable.
+With an Address JWT, use `PATCH /api/mails/flags` to update up to 100 mail IDs. The supported flag is currently `unread`, and its action can be `set`, `clear`, or `toggle`.
 
 ```python
 requests.patch(
     "https://<your-worker-address>/api/mails/flags",
     headers={"Authorization": f"Bearer {your-JWT-password}"},
-    json={"ids": [1, 2], "add": 0, "remove": 1}
+    json={"ids": [1, 2], "flag": "unread", "action": "clear"}
 )
 ```
 
-With a User JWT, send the same body to `PATCH /user_api/mails/flags`. Only mail belonging to addresses bound to that user can be changed. Other flag bits are always preserved.
+With a User JWT, send the same body to `PATCH /user_api/mails/flags`. Only mail belonging to addresses bound to that user can be changed. The response contains the updated `mail_flags`, and all unrelated bits are preserved by the server.
 
-Mail-list endpoints accept generic flag filters: `flag` is the bit position (`0-30`), and `flag_state` is either `set` or `unset`. For example, list unread mail with:
+Mail-list endpoints use the semantic `read_status` filter. For example, list unread mail with:
 
 ```text
-GET /api/mails?limit=20&offset=0&flag=0&flag_state=set
+GET /api/mails?limit=20&offset=0&read_status=unread
 ```
 
-Use `flag=0&flag_state=unset` for read mail. `/user_api/mails` accepts the same parameters, and future custom flags can use bits 10 through 19 directly.
+Use `read_status=read` for read mail. `/user_api/mails` accepts the same parameter. Future system and custom flags will still be mapped from names to bits by the backend.
 
 ## Admin Mail API
 

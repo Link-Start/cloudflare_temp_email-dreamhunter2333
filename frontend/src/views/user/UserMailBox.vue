@@ -5,7 +5,6 @@ import { useScopedI18n } from '@/i18n/app'
 import { api } from '../../api'
 import { useGlobalState } from '../../store'
 import MailBox from '../../components/MailBox.vue';
-import { getMailFlagFilterQuery } from '../../utils/mail-flags';
 
 const message = useMessage()
 const { openSettings } = useGlobalState()
@@ -26,7 +25,7 @@ const fetchMailData = async (limit, offset, mailFlagFilter = 'all') => {
         `/user_api/mails`
         + `?limit=${limit}`
         + `&offset=${offset}`
-        + getMailFlagFilterQuery(mailFlagFilter)
+        + (mailFlagFilter === 'all' ? '' : `&read_status=${mailFlagFilter}`)
         + (addressFilter.value ? `&address=${addressFilter.value}` : '')
     );
 }
@@ -52,10 +51,10 @@ const deleteMail = async (curMailId) => {
     await api.fetch(`/user_api/mails/${curMailId}`, { method: 'DELETE' });
 };
 
-const updateMailFlags = async (ids, add, remove) => {
-    await api.fetch(`/user_api/mails/flags`, {
+const updateMailFlags = async (ids, flag, action) => {
+    return await api.fetch(`/user_api/mails/flags`, {
         method: 'PATCH',
-        body: JSON.stringify({ ids, add, remove })
+        body: JSON.stringify({ ids, flag, action })
     });
 };
 

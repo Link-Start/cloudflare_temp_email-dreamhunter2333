@@ -21,27 +21,27 @@ res = requests.get(
 
 ## 邮件 Flag API
 
-启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应中的 `flags` 为整数位掩码。当前 bit 0 表示 `UNREAD`：值为 `1` 时未读，`NULL` 或 `0` 按已读处理。
+启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应会包含 `mail_flags`，例如 `{"unread": true}`。数据库位掩码、历史 `NULL` 兼容和状态计算全部由后端处理，客户端不需要了解具体 bit。
 
-地址 JWT 使用 `PATCH /api/mails/flags` 批量增删状态位。每次最多传入 100 个邮件 ID；当前仅允许修改 `UNREAD` 位。
+地址 JWT 使用 `PATCH /api/mails/flags` 批量操作状态。每次最多传入 100 个邮件 ID；当前支持 `unread`，操作可为 `set`、`clear` 或 `toggle`。
 
 ```python
 requests.patch(
     "https://<你的worker地址>/api/mails/flags",
     headers={"Authorization": f"Bearer {你的JWT密码}"},
-    json={"ids": [1, 2], "add": 0, "remove": 1}
+    json={"ids": [1, 2], "flag": "unread", "action": "clear"}
 )
 ```
 
-用户 JWT 使用相同请求体访问 `PATCH /user_api/mails/flags`，只能修改该用户已绑定地址的邮件。服务端始终保留请求未涉及的其他 Flag 位。
+用户 JWT 使用相同请求体访问 `PATCH /user_api/mails/flags`，只能修改该用户已绑定地址的邮件。接口返回更新后的 `mail_flags`；服务端始终保留请求未涉及的其他 Flag 位。
 
-邮件列表接口支持通用 Flag 查询参数：`flag` 为 bit 位置（`0-30`），`flag_state` 为 `set` 或 `unset`。例如查询未读邮件：
+邮件列表使用语义化的 `read_status` 查询已读状态。例如查询未读邮件：
 
 ```text
-GET /api/mails?limit=20&offset=0&flag=0&flag_state=set
+GET /api/mails?limit=20&offset=0&read_status=unread
 ```
 
-查询已读邮件则使用 `flag=0&flag_state=unset`。`/user_api/mails` 支持相同参数，后续自定义 Flag 可以直接使用 bit 10～19。
+查询已读邮件使用 `read_status=read`。`/user_api/mails` 支持相同参数。后续扩展其他系统或自定义 Flag 时仍由后端负责名称到 bit 的映射。
 
 ## admin 邮件 API
 

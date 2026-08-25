@@ -18,7 +18,6 @@ import AccountSettings from './AccountSettings.vue'
 import { processItem } from '../../utils/email-parser'
 import MailContentRenderer from '../../components/MailContentRenderer.vue'
 import AddressSelect from '../../components/AddressSelect.vue'
-import { MAIL_FLAGS, hasMailFlag } from '../../utils/mail-flags'
 
 const { jwt, settings, useSimpleIndex, showAddressCredential, openSettings, loading } = useGlobalState()
 const message = useMessage()
@@ -51,12 +50,13 @@ const fetchMails = async () => {
         totalCount.value = count > 0 ? count : totalCount.value;
         const rawMail = results && results.length > 0 ? results[0] : null
         currentMail.value = rawMail ? await processItem(rawMail) : null
-        if (openSettings.value.enableMailFlags && hasMailFlag(rawMail?.flags, MAIL_FLAGS.UNREAD)) {
-            rawMail.flags = Number(rawMail.flags ?? 0) & ~MAIL_FLAGS.UNREAD
-            await api.fetch(`/api/mails/flags`, {
+        if (openSettings.value.enableMailFlags && rawMail) {
+            const response = await api.fetch(`/api/mails/flags`, {
                 method: 'PATCH',
-                body: JSON.stringify({ ids: [rawMail.id], add: 0, remove: MAIL_FLAGS.UNREAD })
+                body: JSON.stringify({ ids: [rawMail.id], flag: 'unread', action: 'clear' })
             })
+            const updatedMail = response.results?.[0]
+            if (updatedMail) currentMail.value.mail_flags = updatedMail.mail_flags
         }
     } catch (error) {
         console.error('Failed to fetch mails:', error)
@@ -66,23 +66,18 @@ const fetchMails = async () => {
 
 const toggleCurrentMailUnread = async () => {
     if (!currentMail.value || !openSettings.value.enableMailFlags) return
-    const wasUnread = hasMailFlag(currentMail.value.flags, MAIL_FLAGS.UNREAD)
-    currentMail.value.flags = wasUnread
-        ? Number(currentMail.value.flags ?? 0) & ~MAIL_FLAGS.UNREAD
-        : Number(currentMail.value.flags ?? 0) | MAIL_FLAGS.UNREAD
     try {
-        await api.fetch(`/api/mails/flags`, {
+        const response = await api.fetch(`/api/mails/flags`, {
             method: 'PATCH',
             body: JSON.stringify({
                 ids: [currentMail.value.id],
-                add: wasUnread ? 0 : MAIL_FLAGS.UNREAD,
-                remove: wasUnread ? MAIL_FLAGS.UNREAD : 0,
+                flag: 'unread',
+                action: 'toggle',
             })
         })
+        const updatedMail = response.results?.[0]
+        if (updatedMail) currentMail.value.mail_flags = updatedMail.mail_flags
     } catch (error) {
-        currentMail.value.flags = wasUnread
-            ? Number(currentMail.value.flags ?? 0) | MAIL_FLAGS.UNREAD
-            : Number(currentMail.value.flags ?? 0) & ~MAIL_FLAGS.UNREAD
         message.error(error.message || 'error')
     }
 }

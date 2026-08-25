@@ -8,7 +8,6 @@ import { getDownloadEmlUrl } from '../utils/email-parser';
 import { blockRemoteContent } from '../utils/remote-content-policy';
 import { utcToLocalDate } from '../utils';
 import { useGlobalState } from '../store';
-import { MAIL_FLAGS, hasMailFlag } from '../utils/mail-flags';
 
 const { preferShowTextMail, useIframeShowMail, useUTCDate, isDark, autoLoadRemoteImages } = useGlobalState();
 
@@ -156,7 +155,7 @@ const handleSaveToS3 = async (filename, blob) => {
       </n-button>
 
       <n-button v-if="enableMailFlags" size="small" tertiary type="info" @click="onToggleUnread">
-        {{ hasMailFlag(mail.flags, MAIL_FLAGS.UNREAD) ? t('markRead') : t('markUnread') }}
+        {{ mail.mail_flags?.unread ? t('markRead') : t('markUnread') }}
       </n-button>
 
       <n-button v-if="showReply" size="small" tertiary type="info" @click="handleReply">

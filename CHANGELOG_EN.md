@@ -10,7 +10,7 @@
 
 ### Features
 
-- feat: |Mail State| Add optional Mail Flags with unread state for new mail, automatic read-on-open, manual state toggling, mark-current-page-read and state filters, plus reserved system/custom bits for future per-address rule assignment
+- feat: |Mail State| Add optional Mail Flags with unread state for new mail, automatic read-on-open, manual state toggling, mark-current-page-read and state filters; bit operations and state mapping are handled by the backend, with reserved system/custom bits for future per-address rule assignment
 - feat: |Admin| Add D1 storage capacity details to the database page, with persistent Free and Workers Paid plan selection and a comparison between the current database size and capacity limit
 - feat: |User| Add mail composition, inbox-style sent-item filtering by bound address, and the shared address-credentials dialog to the user center, backed by User JWT APIs for address settings, send-access requests, sending, and sent-item management
 
@@ -26,7 +26,7 @@
 
 ### Testing
 
-- test: |E2E| Cover unread state on new mail, mailbox isolation, marking mail read, and invalid flag-mask validation
+- test: |E2E| Cover unread state on new mail, mailbox isolation, marking mail read, and invalid flag-operation validation
 - test: |E2E| Cover the D1 database-size response, config-key isolation, and persistence of the database-page plan selection across reloads
 - fix: |E2E| Cover draft editing, content-format switching, and HTML preview in the send-mail composer
 - fix: |E2E| Cover address ownership, balance decrement, delivery, and sent-item operations through the User JWT API, plus user-center credential display, sender switching, and sent-item filtering by address

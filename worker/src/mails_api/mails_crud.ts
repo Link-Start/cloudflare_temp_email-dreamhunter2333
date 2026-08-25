@@ -5,16 +5,27 @@ import { getBooleanValue } from '../utils';
 import { handleMailListQuery, deleteAddressWithData, updateAddressUpdatedAt } from '../common'
 import { resolveRawEmailRow } from '../gzip'
 import { getSendBalanceState } from './send_balance';
-import { parseMailFlagFilter, parseMailFlagUpdate, serializeMailFlags } from '../mail_flags';
+import {
+    getMailFlagUpdateExpression,
+    parseMailFlagFilter,
+    parseMailFlagUpdate,
+    parseReadStatusFilter,
+    serializeMailFlags,
+} from '../mail_flags';
 
 const listMails = async (c: Context<HonoCustomType>) => {
     const { address } = c.get("jwtPayload")
     if (!address) {
         return c.json({ "error": "No address" }, 400)
     }
-    const { limit, offset, flag, flag_state } = c.req.query();
+    const { limit, offset, flag, flag_state, read_status } = c.req.query();
     if (Number.parseInt(offset) <= 0) updateAddressUpdatedAt(c, address);
-    const flagFilter = parseMailFlagFilter(flag, flag_state);
+    if (read_status !== undefined && (flag !== undefined || flag_state !== undefined)) {
+        return c.json({ error: "Conflicting mail flag filters" }, 400);
+    }
+    const flagFilter = read_status === undefined
+        ? parseMailFlagFilter(flag, flag_state)
+        : parseReadStatusFilter(read_status);
     if (flagFilter === null) return c.json({ error: "Invalid mail flag filter" }, 400);
     if (flagFilter && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
         return c.json({ error: "Mail flags are disabled" }, 403);
@@ -68,12 +79,28 @@ const updateMailFlags = async (c: Context<HonoCustomType>) => {
 
     const { address } = c.get("jwtPayload");
     const placeholders = update.ids.map(() => '?').join(',');
+    const flagUpdate = getMailFlagUpdateExpression(update);
+    const condition = flagUpdate.condition ? ` AND ${flagUpdate.condition}` : '';
     const result = await c.env.DB.prepare(
         `UPDATE raw_mails`
-        + ` SET flags = (COALESCE(flags, 0) | ?) & ~?`
-        + ` WHERE address = ? AND id IN (${placeholders})`
-    ).bind(update.add, update.remove, address, ...update.ids).run();
-    return c.json({ success: result.success, changes: result.meta.changes ?? 0 });
+        + ` SET flags = ${flagUpdate.expression}`
+        + ` WHERE address = ? AND id IN (${placeholders})${condition}`
+    ).bind(
+        ...flagUpdate.params,
+        address,
+        ...update.ids,
+        ...(flagUpdate.conditionParams ?? []),
+    ).run();
+    if (!result.success) return c.json({ success: false, changes: 0, results: [] }, 500);
+
+    const { results } = await c.env.DB.prepare(
+        `SELECT id, flags FROM raw_mails WHERE address = ? AND id IN (${placeholders})`
+    ).bind(address, ...update.ids).all();
+    return c.json({
+        success: true,
+        changes: result.meta.changes ?? 0,
+        results: results.map(row => serializeMailFlags(row, true)),
+    });
 };
 
 const getSettings = async (c: Context<HonoCustomType>) => {
