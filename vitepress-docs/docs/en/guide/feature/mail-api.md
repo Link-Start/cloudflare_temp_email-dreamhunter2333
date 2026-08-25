@@ -19,29 +19,31 @@ res = requests.get(
 
 **Note**: `/api/mails` returns raw RFC822 data by design (for example `source`/`raw`), and it does not guarantee parsed fields such as `subject`, `text`, or `html`. Parse the raw source on the client side (for example with `mail-parser-wasm` or `postal-mime`) if you need readable message content.
 
-## Mail Read Status API
+## Mail State API
 
 After enabling `ENABLE_MAIL_FLAGS` and running the database migration, each mail response includes the boolean field `unread`. The backend owns storage, historical `NULL` compatibility, and state calculation.
 
-With an Address JWT, use `PATCH /api/mails/read-status` to update up to 100 mail IDs. The `action` can be `read`, `unread`, or `toggle`.
+With an Address JWT, use `GET /api/mail-states` to retrieve available states. The backend combines its system-state enum with address-specific custom states. The frontend uses each returned `value` directly for filtering and moving, and displays its `label_key` or `label`.
+
+Use `PATCH /api/mails/state` to move the state of up to 100 mail IDs:
 
 ```python
 requests.patch(
-    "https://<your-worker-address>/api/mails/read-status",
+    "https://<your-worker-address>/api/mails/state",
     headers={"Authorization": f"Bearer {your-JWT-password}"},
-    json={"ids": [1, 2], "action": "read"}
+    json={"ids": [1, 2], "state": "read"}
 )
 ```
 
-With a User JWT, send the same body to `PATCH /user_api/mails/read-status`. Only mail belonging to addresses bound to that user can be changed. The response contains the updated `unread` state.
+With a User JWT, use `GET /user_api/mail-states` and `PATCH /user_api/mails/state`. Only mail belonging to addresses bound to that user can be changed. The response contains the updated `unread` state.
 
-Mail-list endpoints use the semantic `read_status` filter. For example, list unread mail with:
+Mail-list endpoints accept a state `value` returned by the backend. For example, list unread mail with:
 
 ```text
-GET /api/mails?limit=20&offset=0&read_status=unread
+GET /api/mails?limit=20&offset=0&mail_state=unread
 ```
 
-Use `read_status=read` for read mail. `/user_api/mails` accepts the same parameter. Future mail groups will also be returned by the backend as group definitions and mail membership; clients only render them.
+`/user_api/mails` accepts the same parameter. Future custom groups only require the backend to append custom states and resolve their values; clients do not add another enum.
 
 ## Admin Mail API
 

@@ -16,7 +16,8 @@ api.get('/user_api/settings', settings.settings);
 
 // mail api
 api.get('/user_api/mails', user_mail_api.getMails);
-api.patch('/user_api/mails/read-status', user_mail_api.updateMailReadStatus);
+api.get('/user_api/mail-states', user_mail_api.getMailStates);
+api.patch('/user_api/mails/state', user_mail_api.updateMailState);
 api.delete('/user_api/mails/:id', user_mail_api.deleteMail);
 
 // send mail api

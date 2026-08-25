@@ -26,11 +26,16 @@ const message = useMessage()
 const currentPage = ref(1)
 const totalCount = ref(0)
 const currentMail = ref(null)
+const mailStates = ref([])
 const showAccountSettingsCard = ref(false)
 const currentAutoRefreshInterval = ref(60)
 const timer = ref(null)
 
 const { t } = useScopedI18n('views.index.SimpleIndex')
+
+const getReadStateValue = (unread) => {
+    return mailStates.value.find(state => state.unread === unread)?.value
+}
 
 // 复制地址
 const copyAddress = async () => {
@@ -50,10 +55,12 @@ const fetchMails = async () => {
         totalCount.value = count > 0 ? count : totalCount.value;
         const rawMail = results && results.length > 0 ? results[0] : null
         currentMail.value = rawMail ? await processItem(rawMail) : null
-        if (openSettings.value.enableReadStatus && rawMail) {
-            const response = await api.fetch(`/api/mails/read-status`, {
+        if (openSettings.value.enableMailStates && rawMail) {
+            const state = getReadStateValue(false)
+            if (!state) return
+            const response = await api.fetch(`/api/mails/state`, {
                 method: 'PATCH',
-                body: JSON.stringify({ ids: [rawMail.id], action: 'read' })
+                body: JSON.stringify({ ids: [rawMail.id], state })
             })
             const updatedMail = response.results?.[0]
             if (updatedMail) currentMail.value.unread = updatedMail.unread
@@ -65,13 +72,15 @@ const fetchMails = async () => {
 }
 
 const toggleCurrentMailUnread = async () => {
-    if (!currentMail.value || !openSettings.value.enableReadStatus) return
+    if (!currentMail.value || !openSettings.value.enableMailStates) return
     try {
-        const response = await api.fetch(`/api/mails/read-status`, {
+        const state = getReadStateValue(!currentMail.value.unread)
+        if (!state) return
+        const response = await api.fetch(`/api/mails/state`, {
             method: 'PATCH',
             body: JSON.stringify({
                 ids: [currentMail.value.id],
-                action: 'toggle',
+                state,
             })
         })
         const updatedMail = response.results?.[0]
@@ -131,6 +140,10 @@ watch(currentPage, () => {
 
 onMounted(async () => {
     await api.getSettings()
+    if (openSettings.value.enableMailStates) {
+        const { results = [] } = await api.fetch(`/api/mail-states`)
+        mailStates.value = results
+    }
     await fetchMails()
 
     // 启动自动刷新
@@ -245,7 +258,7 @@ onBeforeUnmount(() => {
                     <div style="margin-top: 16px;">
                         <MailContentRenderer :mail="currentMail" :showEMailTo="false" :showReply="false"
                             :enableUserDeleteEmail="openSettings.enableUserDeleteEmail" :showSaveS3="false"
-                            :enableReadStatus="openSettings.enableReadStatus" :onToggleUnread="toggleCurrentMailUnread"
+                            :enableMailStates="openSettings.enableMailStates" :onToggleUnread="toggleCurrentMailUnread"
                             :onDelete="deleteMail" />
                     </div>
                 </div>

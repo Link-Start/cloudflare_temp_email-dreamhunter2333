@@ -10,7 +10,7 @@
 
 ### Features
 
-- feat: |Mail State| Add optional read state for new mail, automatic read-on-open, manual state toggling, mark-current-page-read and state filters; the frontend only consumes read state, while backend Flags own storage, calculation, and future group membership
+- feat: |Mail State| Add optional read state for new mail, automatic read-on-open, manual state toggling, mark-current-page-read and state filters; the backend returns the combined system-state enum and custom groups for clients to render and use as move targets
 - feat: |Admin| Add D1 storage capacity details to the database page, with persistent Free and Workers Paid plan selection and a comparison between the current database size and capacity limit
 - feat: |User| Add mail composition, inbox-style sent-item filtering by bound address, and the shared address-credentials dialog to the user center, backed by User JWT APIs for address settings, send-access requests, sending, and sent-item management
 

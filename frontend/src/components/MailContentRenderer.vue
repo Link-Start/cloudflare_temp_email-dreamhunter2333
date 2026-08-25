@@ -34,7 +34,7 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  enableReadStatus: {
+  enableMailStates: {
     type: Boolean,
     default: false
   },
@@ -154,7 +154,7 @@ const handleSaveToS3 = async (filename, blob) => {
         {{ t('downloadMail') }}
       </n-button>
 
-      <n-button v-if="enableReadStatus" size="small" tertiary type="info" @click="onToggleUnread">
+      <n-button v-if="enableMailStates" size="small" tertiary type="info" @click="onToggleUnread">
         {{ mail.unread ? t('markRead') : t('markUnread') }}
       </n-button>
 

@@ -37,11 +37,11 @@ export async function resolveRawEmail(row: RawMailRow): Promise<string> {
  */
 export async function resolveRawEmailRow(
     row: RawMailRow,
-    enableReadStatus = false,
+    enableMailStates = false,
 ): Promise<RawMailRow> {
     const raw = await resolveRawEmail(row);
     const { raw_blob: _, ...rest } = row;
-    return serializeMailState({ ...rest, raw }, enableReadStatus);
+    return serializeMailState({ ...rest, raw }, enableMailStates);
 }
 
 /**
@@ -49,7 +49,7 @@ export async function resolveRawEmailRow(
  */
 export async function resolveRawEmailList(
     rows: RawMailRow[],
-    enableReadStatus = false,
+    enableMailStates = false,
 ): Promise<RawMailRow[]> {
-    return Promise.all(rows.map(row => resolveRawEmailRow(row, enableReadStatus)));
+    return Promise.all(rows.map(row => resolveRawEmailRow(row, enableMailStates)));
 }

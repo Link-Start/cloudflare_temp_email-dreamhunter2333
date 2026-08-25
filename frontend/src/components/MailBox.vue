@@ -55,20 +55,26 @@ const props = defineProps({
     default: false,
     required: false
   },
-  enableReadStatus: {
+  enableMailStates: {
     type: Boolean,
     default: false,
     required: false
   },
-  updateMailReadStatus: {
+  updateMailState: {
     type: Function,
     default: () => { },
+    required: false
+  },
+  fetchMailStates: {
+    type: Function,
+    default: () => ({ results: [] }),
     required: false
   },
 })
 
 const localFilterKeyword = ref('')
-const readStatusFilter = ref('all')
+const mailStateFilter = ref(null)
+const mailStates = ref([])
 
 const {
   isDark, mailboxSplitSize, mailListView, mailListPreviewLineClamp, indexTab, loading, useUTCDate,
@@ -106,20 +112,23 @@ const data = computed(() => {
 })
 
 const isMailUnread = (mail) => {
-  return props.enableReadStatus && mail?.unread === true
+  return props.enableMailStates && mail?.unread === true
 }
 
 const currentPageHasUnread = computed(() => rawData.value.some(isMailUnread))
-const readStatusFilterOptions = computed(() => [
-  { label: t('allMail'), value: 'all' },
-  { label: t('unread'), value: 'unread' },
-  { label: t('read'), value: 'read' },
-])
+const mailStateFilterOptions = computed(() => mailStates.value.map(state => ({
+  label: state.label || t(state.label_key),
+  value: state.value,
+})))
 
-const updateUnreadState = async (mails, action) => {
-  if (mails.length === 0) return true
+const getReadStateValue = (unread) => {
+  return mailStates.value.find(state => state.unread === unread)?.value
+}
+
+const updateUnreadState = async (mails, state) => {
+  if (mails.length === 0 || !state) return true
   try {
-    const response = await props.updateMailReadStatus(mails.map(mail => mail.id), action)
+    const response = await props.updateMailState(mails.map(mail => mail.id), state)
     const results = response?.results ?? []
     const resultById = new Map(results.map(result => [result.id, result]))
     mails.forEach(mail => {
@@ -133,11 +142,11 @@ const updateUnreadState = async (mails, action) => {
   }
 }
 
-const markMailsRead = async (mails) => updateUnreadState(mails, 'read')
+const markMailsRead = async (mails) => updateUnreadState(mails, getReadStateValue(false))
 
 const toggleCurrentMailUnread = async () => {
   if (!curMail.value) return
-  await updateUnreadState([curMail.value], 'toggle')
+  await updateUnreadState([curMail.value], getReadStateValue(!curMail.value.unread))
 }
 
 const openMail = async (mail) => {
@@ -148,7 +157,7 @@ const openMail = async (mail) => {
 const markCurrentPageRead = async () => {
   if (!await markMailsRead(rawData.value)) return
   message.success(t("success"))
-  if (readStatusFilter.value === 'unread') await refresh()
+  if (mailStateFilter.value === getReadStateValue(true)) await refresh()
 }
 
 const canGoPrevMail = computed(() => {
@@ -232,14 +241,15 @@ watch([page, pageSize], async ([page, pageSize], [oldPage, oldPageSize]) => {
   }
 })
 
-watch(readStatusFilter, async () => {
+watch(mailStateFilter, async (_value, oldValue) => {
+  if (oldValue === null) return
   await backFirstPageAndRefresh()
 })
 
 const refresh = async () => {
   try {
     const { results, count: totalCount } = await props.fetchMailData(
-      pageSize.value, (page.value - 1) * pageSize.value, readStatusFilter.value
+      pageSize.value, (page.value - 1) * pageSize.value, mailStateFilter.value
     );
     loading.value = true;
     rawData.value = await Promise.all(results.map(async (item) => {
@@ -388,6 +398,11 @@ const multiActionDownload = async () => {
 }
 
 onMounted(async () => {
+  if (props.enableMailStates) {
+    const { results = [] } = await props.fetchMailStates()
+    mailStates.value = results
+    mailStateFilter.value = results.find(state => state.default)?.value ?? results[0]?.value ?? null
+  }
   await refresh();
 });
 
@@ -440,10 +455,10 @@ onBeforeUnmount(() => {
           <n-button @click="backFirstPageAndRefresh" type="primary" tertiary>
             {{ t('refresh') }}
           </n-button>
-          <n-button v-if="enableReadStatus && currentPageHasUnread" @click="markCurrentPageRead" tertiary>
+          <n-button v-if="enableMailStates && currentPageHasUnread" @click="markCurrentPageRead" tertiary>
             {{ t('markCurrentPageRead') }}
           </n-button>
-          <n-select v-if="enableReadStatus" v-model:value="readStatusFilter" :options="readStatusFilterOptions"
+          <n-select v-if="enableMailStates" v-model:value="mailStateFilter" :options="mailStateFilterOptions"
             style="width: 120px" />
           <n-input v-if="showFilterInput" v-model:value="localFilterKeyword"
             :placeholder="t('keywordQueryTip')" style="width: 200px; display: flex; align-items: center;"
@@ -528,7 +543,7 @@ onBeforeUnmount(() => {
             style="overflow: auto; max-height: 100vh;">
             <MailContentRenderer :mail="curMail" :showEMailTo="showEMailTo"
               :enableUserDeleteEmail="enableUserDeleteEmail" :showReply="showReply" :showSaveS3="showSaveS3"
-              :enableReadStatus="enableReadStatus" :onToggleUnread="toggleCurrentMailUnread"
+              :enableMailStates="enableMailStates" :onToggleUnread="toggleCurrentMailUnread"
               :onDelete="deleteMail" :onReply="replyMail" :onForward="forwardMail" :onSaveToS3="saveToS3Proxy" />
           </n-card>
           <n-card :bordered="false" embedded class="mail-item" v-else>
@@ -600,7 +615,7 @@ onBeforeUnmount(() => {
         <n-button @click="backFirstPageAndRefresh" tertiary size="small" type="primary">
           {{ t('refresh') }}
         </n-button>
-        <n-button v-if="enableReadStatus && currentPageHasUnread" @click="markCurrentPageRead" tertiary size="small">
+        <n-button v-if="enableMailStates && currentPageHasUnread" @click="markCurrentPageRead" tertiary size="small">
           {{ t('markCurrentPageRead') }}
         </n-button>
       </n-space>
@@ -608,8 +623,8 @@ onBeforeUnmount(() => {
         <n-input v-model:value="localFilterKeyword"
           :placeholder="t('keywordQueryTip')" size="small" clearable />
       </div>
-      <div v-if="enableReadStatus" style="padding: 0 10px; margin-bottom: 10px;">
-        <n-select v-model:value="readStatusFilter" :options="readStatusFilterOptions" size="small" />
+      <div v-if="enableMailStates" style="padding: 0 10px; margin-bottom: 10px;">
+        <n-select v-model:value="mailStateFilter" :options="mailStateFilterOptions" size="small" />
       </div>
       <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
         <n-list hoverable clickable>
@@ -649,7 +664,7 @@ onBeforeUnmount(() => {
             <MailContentRenderer :mail="curMail" :showEMailTo="showEMailTo"
               :enableUserDeleteEmail="enableUserDeleteEmail" :showReply="showReply" :showSaveS3="showSaveS3"
               :useUTCDate="useUTCDate" :onDelete="deleteMail" :onReply="replyMail" :onForward="forwardMail"
-              :enableReadStatus="enableReadStatus" :onToggleUnread="toggleCurrentMailUnread"
+              :enableMailStates="enableMailStates" :onToggleUnread="toggleCurrentMailUnread"
               :onSaveToS3="saveToS3Proxy" />
           </n-card>
         </n-drawer-content>

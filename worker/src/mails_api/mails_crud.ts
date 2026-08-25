@@ -6,8 +6,9 @@ import { handleMailListQuery, deleteAddressWithData, updateAddressUpdatedAt } fr
 import { resolveRawEmailRow } from '../gzip'
 import { getSendBalanceState } from './send_balance';
 import {
-    getReadStatusQuery,
-    applyMailReadStatusUpdate,
+    getMailStateQuery,
+    getMailStateOptions,
+    applyMailStateUpdate,
 } from '../mail_flags';
 
 const listMails = async (c: Context<HonoCustomType>) => {
@@ -15,19 +16,19 @@ const listMails = async (c: Context<HonoCustomType>) => {
     if (!address) {
         return c.json({ "error": "No address" }, 400)
     }
-    const { limit, offset, read_status } = c.req.query();
+    const { limit, offset, mail_state } = c.req.query();
     if (Number.parseInt(offset) <= 0) updateAddressUpdatedAt(c, address);
-    const readStatusQuery = getReadStatusQuery(read_status, 'flags');
-    if (readStatusQuery === null) return c.json({ error: "Invalid mail read status filter" }, 400);
-    if (readStatusQuery && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
-        return c.json({ error: "Mail read status is disabled" }, 403);
+    const stateQuery = getMailStateQuery(mail_state, 'flags');
+    if (stateQuery === null) return c.json({ error: "Invalid mail state filter" }, 400);
+    if (stateQuery && !getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+        return c.json({ error: "Mail states are disabled" }, 403);
     }
 
     const filters = [`address = ?`];
     const params = [address];
-    if (readStatusQuery) {
-        filters.push(readStatusQuery.clause);
-        params.push(...readStatusQuery.params);
+    if (stateQuery) {
+        filters.push(stateQuery.clause);
+        params.push(...stateQuery.params);
     }
     const whereClause = filters.join(' AND ');
     return await handleMailListQuery(c,
@@ -64,19 +65,26 @@ const deleteMail = async (c: Context<HonoCustomType>) => {
     return c.json({ success });
 };
 
-const updateMailReadStatus = async (c: Context<HonoCustomType>) => {
+const updateMailState = async (c: Context<HonoCustomType>) => {
     if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
-        return c.json({ error: "Mail read status is disabled" }, 403);
+        return c.json({ error: "Mail states are disabled" }, 403);
     }
     const { address } = c.get("jwtPayload");
-    const result = await applyMailReadStatusUpdate(
+    const result = await applyMailStateUpdate(
         c.env.DB,
         { clause: 'address = ?', params: [address] },
         await c.req.json().catch(() => null),
     );
-    if (!result) return c.json({ error: "Invalid mail read status request" }, 400);
+    if (!result) return c.json({ error: "Invalid mail state request" }, 400);
     if (!result.success) return c.json(result, 500);
     return c.json(result);
+};
+
+const getMailStates = (c: Context<HonoCustomType>) => {
+    if (!getBooleanValue(c.env.ENABLE_MAIL_FLAGS)) {
+        return c.json({ error: "Mail states are disabled" }, 403);
+    }
+    return c.json({ results: getMailStateOptions() });
 };
 
 const getSettings = async (c: Context<HonoCustomType>) => {
@@ -153,6 +161,6 @@ const clearSentItems = async (c: Context<HonoCustomType>) => {
 };
 
 export default {
-    listMails, getMail, deleteMail, updateMailReadStatus,
+    listMails, getMail, deleteMail, updateMailState, getMailStates,
     getSettings, deleteAddress, clearInbox, clearSentItems
 };

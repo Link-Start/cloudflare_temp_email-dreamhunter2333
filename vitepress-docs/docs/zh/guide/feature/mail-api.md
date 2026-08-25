@@ -19,29 +19,31 @@ res = requests.get(
 
 **注意**：`/api/mails` 按设计返回的是原始 RFC822 数据（如 `source`/`raw`），不保证直接包含 `subject`、`text`、`html` 等已解析字段。若要直接读取正文，请在客户端侧解析 `raw`（例如 `mail-parser-wasm`、`postal-mime`）。
 
-## 邮件已读状态 API
+## 邮件状态 API
 
 启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应会包含布尔字段 `unread`。数据库存储、历史 `NULL` 兼容和状态计算全部由后端处理。
 
-地址 JWT 使用 `PATCH /api/mails/read-status` 批量操作状态。每次最多传入 100 个邮件 ID；`action` 可为 `read`、`unread` 或 `toggle`。
+地址 JWT 使用 `GET /api/mail-states` 获取状态列表。后端将系统状态枚举与地址自定义状态合并后返回；前端直接使用其中的 `value` 作为筛选和移动参数，并使用 `label_key` 或 `label` 显示名称。
+
+使用 `PATCH /api/mails/state` 批量移动邮件状态，每次最多传入 100 个邮件 ID：
 
 ```python
 requests.patch(
-    "https://<你的worker地址>/api/mails/read-status",
+    "https://<你的worker地址>/api/mails/state",
     headers={"Authorization": f"Bearer {你的JWT密码}"},
-    json={"ids": [1, 2], "action": "read"}
+    json={"ids": [1, 2], "state": "read"}
 )
 ```
 
-用户 JWT 使用相同请求体访问 `PATCH /user_api/mails/read-status`，只能修改该用户已绑定地址的邮件。接口返回更新后的 `unread` 状态。
+用户 JWT 使用 `GET /user_api/mail-states` 和 `PATCH /user_api/mails/state`，只能修改该用户已绑定地址的邮件。接口返回更新后的 `unread` 状态。
 
-邮件列表使用语义化的 `read_status` 查询已读状态。例如查询未读邮件：
+邮件列表使用后端返回的状态 `value` 查询。例如查询未读邮件：
 
 ```text
-GET /api/mails?limit=20&offset=0&read_status=unread
+GET /api/mails?limit=20&offset=0&mail_state=unread
 ```
 
-查询已读邮件使用 `read_status=read`，`/user_api/mails` 支持相同参数。后续邮件分组也由后端返回分组定义和邮件归属，客户端只负责展示。
+`/user_api/mails` 支持相同参数。后续增加自定义分组时，只需由后端将自定义状态拼接到状态列表并解析其 `value`，客户端无需增加枚举。
 
 ## admin 邮件 API
 
