@@ -10,7 +10,7 @@ offset = 0
 res = requests.get(
     f"https://<你的worker地址>/api/mails?limit={limit}&offset={offset}",
     headers={
-        "Authorization": f"Bearer {你的JWT密码}",
+        "Authorization": "Bearer <你的JWT密码>",
         # "x-custom-auth": "<你的网站密码>", # 如果启用了私有站点密码
         "Content-Type": "application/json"
     }
@@ -30,7 +30,7 @@ res = requests.get(
 ```python
 requests.patch(
     "https://<你的worker地址>/api/mails/state",
-    headers={"Authorization": f"Bearer {你的JWT密码}"},
+    headers={"Authorization": "Bearer <你的JWT密码>"},
     json={"ids": [1, 2], "state": "read"}
 )
 ```

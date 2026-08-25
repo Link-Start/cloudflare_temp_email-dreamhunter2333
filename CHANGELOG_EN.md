@@ -26,7 +26,7 @@
 
 ### Testing
 
-- test: |E2E| Cover unread state on new mail, mailbox isolation, marking mail read, and invalid status-operation validation
+- fix: |E2E| Cover unread state on new mail, mailbox isolation, marking mail read, and invalid status-operation validation
 - test: |E2E| Cover the D1 database-size response, config-key isolation, and persistence of the database-page plan selection across reloads
 - fix: |E2E| Cover draft editing, content-format switching, and HTML preview in the send-mail composer
 - fix: |E2E| Cover address ownership, balance decrement, delivery, and sent-item operations through the User JWT API, plus user-center credential display, sender switching, and sent-item filtering by address

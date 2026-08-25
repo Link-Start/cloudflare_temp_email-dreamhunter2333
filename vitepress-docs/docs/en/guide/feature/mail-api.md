@@ -10,7 +10,7 @@ offset = 0
 res = requests.get(
     f"https://<your-worker-address>/api/mails?limit={limit}&offset={offset}",
     headers={
-        "Authorization": f"Bearer {your-JWT-password}",
+        "Authorization": "Bearer <your-JWT-password>",
         # "x-custom-auth": "<your-website-password>", # If private site password is enabled
         "Content-Type": "application/json"
     }
@@ -30,7 +30,7 @@ Use `PATCH /api/mails/state` to move the state of up to 100 mail IDs:
 ```python
 requests.patch(
     "https://<your-worker-address>/api/mails/state",
-    headers={"Authorization": f"Bearer {your-JWT-password}"},
+    headers={"Authorization": "Bearer <your-JWT-password>"},
     json={"ids": [1, 2], "state": "read"}
 )
 ```

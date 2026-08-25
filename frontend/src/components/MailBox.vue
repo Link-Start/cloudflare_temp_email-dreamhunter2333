@@ -157,7 +157,7 @@ const openMail = async (mail) => {
 const markCurrentPageRead = async () => {
   if (!await markMailsRead(rawData.value)) return
   message.success(t("success"))
-  if (mailStateFilter.value === getReadStateValue(true)) await refresh()
+  if (mailStateFilter.value === getReadStateValue(true)) await backFirstPageAndRefresh()
 }
 
 const canGoPrevMail = computed(() => {
