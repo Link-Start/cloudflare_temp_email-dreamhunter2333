@@ -1,7 +1,6 @@
 import { Context } from "hono";
 import { handleMailListQuery } from "../common";
 import { resolveRawEmailRow } from "../gzip";
-import { getBooleanValue } from "../utils";
 import { serializeMailState } from "../mail_flags";
 
 export default {
@@ -35,7 +34,7 @@ export default {
         if (!result) return c.json(null);
         return c.json(serializeMailState(
             await resolveRawEmailRow(result),
-            getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
+            c.env,
         ));
     },
     deleteMail: async (c: Context<HonoCustomType>) => {

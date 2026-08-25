@@ -69,6 +69,7 @@ export default {
         const { user_id } = c.get("userPayload");
         const result = await applyMailStateUpdate(
             c.env.DB,
+            c.env,
             {
                 clause: `EXISTS (`
                 + `SELECT 1 FROM users_address ua`

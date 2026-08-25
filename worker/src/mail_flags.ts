@@ -1,3 +1,5 @@
+import { getBooleanValue } from './utils';
+
 export const MAIL_FLAGS = {
     UNREAD: 1 << 0,
     ANSWERED: 1 << 1,
@@ -94,12 +96,12 @@ export const createCustomMailStateDefinitions = (
 
 export const serializeMailState = <T extends Record<string, unknown>>(
     row: T,
-    enabled: boolean,
+    env: Bindings,
 ): T => {
     const result = { ...row };
     const flags = Number(result.flags ?? 0);
     delete result.flags;
-    if (!enabled) {
+    if (!getBooleanValue(env.ENABLE_MAIL_FLAGS)) {
         return result;
     }
     result.unread = (flags & MAIL_FLAGS.UNREAD) !== 0;
@@ -196,6 +198,7 @@ type MailScope = {
 
 export const applyMailStateUpdate = async (
     db: D1Database,
+    env: Bindings,
     scope: MailScope,
     value: unknown,
     customStates: MailStateDefinition[] = [],
@@ -224,6 +227,6 @@ export const applyMailStateUpdate = async (
     return {
         success: true,
         changes: result.meta.changes ?? 0,
-        results: results.map(row => serializeMailState(row, true)),
+        results: results.map(row => serializeMailState(row, env)),
     };
 };

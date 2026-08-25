@@ -48,7 +48,7 @@ const getMail = async (c: Context<HonoCustomType>) => {
     if (!result) return c.json(null);
     return c.json(serializeMailState(
         await resolveRawEmailRow(result),
-        getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
+        c.env,
     ));
 };
 
@@ -73,6 +73,7 @@ const updateMailState = async (c: Context<HonoCustomType>) => {
     const { address } = c.get("jwtPayload");
     const result = await applyMailStateUpdate(
         c.env.DB,
+        c.env,
         { clause: 'address = ?', params: [address] },
         await c.req.json().catch(() => null),
     );

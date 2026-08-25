@@ -724,7 +724,7 @@ export const handleMailListQuery = async (
     const resolvedResults = await resolveRawEmailList(results);
     const serializedResults = resolvedResults.map(row => serializeMailState(
         row,
-        getBooleanValue(c.env.ENABLE_MAIL_FLAGS),
+        c.env,
     ));
     const count = offset == 0 ? await c.env.DB.prepare(
         countQuery
