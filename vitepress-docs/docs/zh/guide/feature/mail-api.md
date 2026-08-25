@@ -23,7 +23,7 @@ res = requests.get(
 
 启用 `ENABLE_MAIL_FLAGS` 并完成数据库迁移后，邮件响应会包含布尔字段 `unread`。数据库存储、历史 `NULL` 兼容和状态计算全部由后端处理。
 
-地址 JWT 使用 `GET /api/mail-states` 获取状态列表。后端将系统状态枚举与地址自定义状态合并后返回；前端直接使用其中的 `value` 作为筛选和移动参数，并使用 `label_key` 或 `label` 显示名称。
+地址 JWT 使用 `GET /api/mail-states` 获取当前可用的系统状态；该接口也是未来扩展地址自定义状态的入口。前端直接使用其中的 `value` 作为筛选和移动参数，并使用 `label_key` 或 `label` 显示名称。
 
 使用 `PATCH /api/mails/state` 批量移动邮件状态，每次最多传入 100 个邮件 ID：
 

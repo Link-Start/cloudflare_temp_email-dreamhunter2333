@@ -141,8 +141,13 @@ watch(currentPage, () => {
 onMounted(async () => {
     await api.getSettings()
     if (openSettings.value.enableMailStates) {
-        const { results = [] } = await api.fetch(`/api/mail-states`)
-        mailStates.value = results
+        try {
+            const { results = [] } = await api.fetch(`/api/mail-states`)
+            mailStates.value = results
+        } catch (error) {
+            mailStates.value = []
+            message.error(error.message || "error")
+        }
     }
     await fetchMails()
 

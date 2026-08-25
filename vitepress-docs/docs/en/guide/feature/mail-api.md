@@ -23,7 +23,7 @@ res = requests.get(
 
 After enabling `ENABLE_MAIL_FLAGS` and running the database migration, each mail response includes the boolean field `unread`. The backend owns storage, historical `NULL` compatibility, and state calculation.
 
-With an Address JWT, use `GET /api/mail-states` to retrieve available states. The backend combines its system-state enum with address-specific custom states. The frontend uses each returned `value` directly for filtering and moving, and displays its `label_key` or `label`.
+With an Address JWT, use `GET /api/mail-states` to retrieve the currently available system states. This endpoint is the extension point for future address-specific custom states. The frontend uses each returned `value` directly for filtering and moving, and displays its `label_key` or `label`.
 
 Use `PATCH /api/mails/state` to move the state of up to 100 mail IDs:
 

@@ -399,9 +399,14 @@ const multiActionDownload = async () => {
 
 onMounted(async () => {
   if (props.enableMailStates) {
-    const { results = [] } = await props.fetchMailStates()
-    mailStates.value = results
-    mailStateFilter.value = results.find(state => state.default)?.value ?? results[0]?.value ?? null
+    try {
+      const { results = [] } = await props.fetchMailStates()
+      mailStates.value = results
+      mailStateFilter.value = results.find(state => state.default)?.value ?? results[0]?.value ?? null
+    } catch (error) {
+      mailStates.value = []
+      message.error(error.message || "error")
+    }
   }
   await refresh();
 });
