@@ -4,6 +4,7 @@ import { Jwt } from 'hono/utils/jwt'
 import i18n from '../i18n'
 import { getBooleanValue } from '../utils'
 import { newAddress, handleListQuery } from '../common'
+import { deleteRawMails, prepareRawMailDeleteStatements } from '../mail_flags'
 
 const listAddresses = async (c: Context<HonoCustomType>) => {
     const { limit, offset, query, sort_by, sort_order } = c.req.query();
@@ -74,10 +75,12 @@ const deleteAddress = async (c: Context<HonoCustomType>) => {
     // deleted first and the address row last, so the name subqueries still
     // resolve and a failed statement rolls back the whole deletion
     const results = await c.env.DB.batch([
-        c.env.DB.prepare(
-            `DELETE FROM raw_mails WHERE address IN`
-            + ` (select name from address where id = ?) `
-        ).bind(id),
+        ...prepareRawMailDeleteStatements(
+            c.env.DB,
+            c.env,
+            `address IN (select name from address where id = ?)`,
+            [id],
+        ),
         c.env.DB.prepare(
             `DELETE FROM address_sender WHERE address IN`
             + ` (select name from address where id = ?) `
@@ -107,10 +110,12 @@ const deleteAddress = async (c: Context<HonoCustomType>) => {
 const clearInbox = async (c: Context<HonoCustomType>) => {
     const msgs = i18n.getMessagesbyContext(c);
     const { id } = c.req.param();
-    const { success: mailSuccess } = await c.env.DB.prepare(
-        `DELETE FROM raw_mails WHERE address IN`
-        + ` (select name from address where id = ?) `
-    ).bind(id).run();
+    const { success: mailSuccess } = await deleteRawMails(
+        c.env.DB,
+        c.env,
+        `address IN (select name from address where id = ?)`,
+        [id],
+    );
     if (!mailSuccess) {
         return c.text(msgs.OperationFailedMsg, 500)
     }

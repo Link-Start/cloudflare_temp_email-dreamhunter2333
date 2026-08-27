@@ -19,6 +19,52 @@ res = requests.get(
 
 **Note**: `/api/mails` returns raw RFC822 data by design (for example `source`/`raw`), and it does not guarantee parsed fields such as `subject`, `text`, or `html`. Parse the raw source on the client side (for example with `mail-parser-wasm` or `postal-mime`) if you need readable message content.
 
+## Mail State API
+
+After running the database migration, `ENABLE_MAIL_READ_STATUS` and `ENABLE_MAIL_FLAGGED` can be enabled independently. The former adds `unread` to mail responses and the latter adds `flagged`. State lives in a separate sparse relation table without changing `raw_mails`; historical mail without a state record is read and unstarred by default, and the backend handles state calculation and updates.
+
+Read status is the high-write feature: it inserts one unread row for every new mail and deletes that row when the mail becomes read. Enabling only Flagged performs none of those writes; the database changes only when a user adds or removes a star.
+
+With an Address JWT, use `GET /api/mail-states` to retrieve the available read states. The frontend uses each returned `value` directly for filtering and updates, and displays its `label_key`.
+
+Use `PATCH /api/mails/state` to move the state of up to 100 mail IDs:
+
+```python
+requests.patch(
+    "https://<your-worker-address>/api/mails/state",
+    headers={"Authorization": "Bearer <your-JWT-password>"},
+    json={"ids": [1, 2], "state": "read"}
+)
+```
+
+With a User JWT, use `GET /user_api/mail-states` and `PATCH /user_api/mails/state`. Only mail belonging to addresses bound to that user can be changed. The response contains the updated `unread` state.
+
+Flagged is independent of read state. Use `PATCH /api/mails/flagged` to add or remove stars:
+
+```python
+requests.patch(
+    "https://<your-worker-address>/api/mails/flagged",
+    headers={"Authorization": "Bearer <your-JWT-password>"},
+    json={"ids": [1, 2], "flagged": True}
+)
+```
+
+The User JWT equivalent is `PATCH /user_api/mails/flagged`.
+
+Mail-list endpoints accept a state `value` returned by the backend. For example, list unread mail with:
+
+```text
+GET /api/mails?limit=20&offset=0&mail_state=unread
+```
+
+Use `flagged=true` to list starred mail. It can be combined with `mail_state`:
+
+```text
+GET /api/mails?limit=20&offset=0&mail_state=unread&flagged=true
+```
+
+`/user_api/mails` accepts the same parameter.
+
 ## Admin Mail API
 
 Supports `address` filter

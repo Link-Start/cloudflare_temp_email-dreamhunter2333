@@ -3,7 +3,10 @@ import { watch, onMounted, ref, onBeforeUnmount, computed } from "vue";
 import { useMessage } from 'naive-ui'
 import { useScopedI18n } from '@/i18n/app'
 import { useGlobalState } from '../store'
-import { CloudDownloadRound, ArrowBackIosNewFilled, ArrowForwardIosFilled, InboxRound } from '@vicons/material'
+import {
+  CloudDownloadRound, ArrowBackIosNewFilled, ArrowForwardIosFilled, InboxRound,
+  StarBorderRound, StarRound
+} from '@vicons/material'
 import { useIsMobile } from '../utils/composables'
 import { processItem } from '../utils/email-parser'
 import { utcToLocalDate } from '../utils';
@@ -55,9 +58,37 @@ const props = defineProps({
     default: false,
     required: false
   },
+  enableMailReadStatus: {
+    type: Boolean,
+    default: false,
+    required: false
+  },
+  enableMailFlagged: {
+    type: Boolean,
+    default: false,
+    required: false
+  },
+  updateMailState: {
+    type: Function,
+    default: () => { },
+    required: false
+  },
+  updateMailFlagged: {
+    type: Function,
+    default: () => { },
+    required: false
+  },
+  fetchMailStates: {
+    type: Function,
+    default: () => ({ results: [] }),
+    required: false
+  },
 })
 
 const localFilterKeyword = ref('')
+const mailStateFilter = ref(null)
+const flaggedOnly = ref(false)
+const mailStates = ref([])
 
 const {
   isDark, mailboxSplitSize, mailListView, mailListPreviewLineClamp, indexTab, loading, useUTCDate,
@@ -94,6 +125,73 @@ const data = computed(() => {
   });
 })
 
+const isMailUnread = (mail) => {
+  return props.enableMailReadStatus && mail?.unread === true
+}
+
+const currentPageHasUnread = computed(() => rawData.value.some(isMailUnread))
+const mailStateFilterOptions = computed(() => mailStates.value.map(state => ({
+  label: state.label || t(state.label_key),
+  value: state.value,
+})))
+
+const getReadStateValue = (unread) => {
+  return mailStates.value.find(state => state.unread === unread)?.value
+}
+
+const updateUnreadState = async (mails, state) => {
+  if (mails.length === 0 || !state) return true
+  try {
+    const response = await props.updateMailState(mails.map(mail => mail.id), state)
+    const results = response?.results ?? []
+    const resultById = new Map(results.map(result => [result.id, result]))
+    mails.forEach(mail => {
+      const result = resultById.get(mail.id)
+      if (result) mail.unread = result.unread
+    })
+    return true
+  } catch (error) {
+    message.error(error.message || "error")
+    return false
+  }
+}
+
+const markMailsRead = async (mails) => {
+  return await updateUnreadState(mails.filter(isMailUnread), getReadStateValue(false))
+}
+
+const toggleCurrentMailUnread = async () => {
+  if (!curMail.value) return
+  await updateUnreadState([curMail.value], getReadStateValue(!curMail.value.unread))
+}
+
+const toggleMailFlagged = async (mail) => {
+  if (!mail) return
+  try {
+    const response = await props.updateMailFlagged([mail.id], !mail.flagged)
+    const result = response?.results?.[0]
+    if (result) mail.flagged = result.flagged
+    if (flaggedOnly.value && !mail.flagged) await backFirstPageAndRefresh()
+  } catch (error) {
+    message.error(error.message || "error")
+  }
+}
+
+const toggleCurrentMailFlagged = async () => {
+  await toggleMailFlagged(curMail.value)
+}
+
+const openMail = async (mail) => {
+  curMail.value = mail
+  await markMailsRead([mail])
+}
+
+const markCurrentPageRead = async () => {
+  if (!await markMailsRead(rawData.value)) return
+  message.success(t("success"))
+  if (mailStateFilter.value === getReadStateValue(true)) await backFirstPageAndRefresh()
+}
+
 const canGoPrevMail = computed(() => {
   if (!curMail.value) return false
   const currentIndex = data.value.findIndex(mail => mail.id === curMail.value.id)
@@ -111,12 +209,12 @@ const prevMail = async () => {
   const currentIndex = data.value.findIndex(mail => mail.id === curMail.value.id)
 
   if (currentIndex > 0) {
-    curMail.value = data.value[currentIndex - 1]
+    await openMail(data.value[currentIndex - 1])
   } else if (page.value > 1) {
     page.value--
     await refresh()
     if (data.value.length > 0) {
-      curMail.value = data.value[data.value.length - 1]
+      await openMail(data.value[data.value.length - 1])
     }
   }
 }
@@ -126,12 +224,12 @@ const nextMail = async () => {
   const currentIndex = data.value.findIndex(mail => mail.id === curMail.value.id)
 
   if (currentIndex < data.value.length - 1) {
-    curMail.value = data.value[currentIndex + 1]
+    await openMail(data.value[currentIndex + 1])
   } else if (count.value > page.value * pageSize.value) {
     page.value++
     await refresh()
     if (data.value.length > 0) {
-      curMail.value = data.value[0]
+      await openMail(data.value[0])
     }
   }
 }
@@ -165,6 +263,22 @@ const setupAutoRefresh = async (autoRefresh) => {
   }
 }
 
+const loadMailStates = async () => {
+  if (!props.enableMailReadStatus) {
+    mailStates.value = []
+    mailStateFilter.value = null
+    return
+  }
+  try {
+    const { results = [] } = await props.fetchMailStates()
+    mailStates.value = results
+    mailStateFilter.value = results.find(state => state.default)?.value ?? results[0]?.value ?? null
+  } catch (error) {
+    mailStates.value = []
+    message.error(error.message || "error")
+  }
+}
+
 watch(autoRefresh, async (autoRefresh, old) => {
   setupAutoRefresh(autoRefresh)
 }, { immediate: true })
@@ -175,19 +289,32 @@ watch([page, pageSize], async ([page, pageSize], [oldPage, oldPageSize]) => {
   }
 })
 
+watch(mailStateFilter, async (_value, oldValue) => {
+  if (oldValue === null) return
+  await backFirstPageAndRefresh()
+})
+
+watch(flaggedOnly, async () => {
+  await backFirstPageAndRefresh()
+})
+
+watch(() => props.enableMailReadStatus, async (enabled, oldValue) => {
+  if (enabled === oldValue) return
+  await loadMailStates()
+})
+
 const refresh = async () => {
   try {
     const { results, count: totalCount } = await props.fetchMailData(
-      pageSize.value, (page.value - 1) * pageSize.value
+      pageSize.value, (page.value - 1) * pageSize.value, mailStateFilter.value,
+      flaggedOnly.value
     );
     loading.value = true;
     rawData.value = await Promise.all(results.map(async (item) => {
       item.checked = false;
       return await processItem(item);
     }));
-    if (totalCount > 0) {
-      count.value = totalCount;
-    }
+    if (page.value === 1) count.value = totalCount;
     curMail.value = null;
     if (!isMobile.value && !mailListView.value && data.value.length > 0) {
       curMail.value = data.value[0];
@@ -215,7 +342,7 @@ const clickRow = async (row) => {
     curMail.value = null;
     return;
   }
-  curMail.value = row;
+  await openMail(row);
 };
 
 
@@ -329,6 +456,7 @@ const multiActionDownload = async () => {
 }
 
 onMounted(async () => {
+  await loadMailStates()
   await refresh();
 });
 
@@ -381,6 +509,14 @@ onBeforeUnmount(() => {
           <n-button @click="backFirstPageAndRefresh" type="primary" tertiary>
             {{ t('refresh') }}
           </n-button>
+          <n-button v-if="enableMailReadStatus && currentPageHasUnread" @click="markCurrentPageRead" tertiary>
+            {{ t('markCurrentPageRead') }}
+          </n-button>
+          <n-select v-if="enableMailReadStatus" v-model:value="mailStateFilter" :options="mailStateFilterOptions"
+            style="width: 120px" />
+          <n-checkbox v-if="enableMailFlagged" v-model:checked="flaggedOnly">
+            {{ t('flagged') }}
+          </n-checkbox>
           <n-input v-if="showFilterInput" v-model:value="localFilterKeyword"
             :placeholder="t('keywordQueryTip')" style="width: 200px; display: flex; align-items: center;"
             clearable />
@@ -397,12 +533,21 @@ onBeforeUnmount(() => {
           <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
             <n-list hoverable clickable>
               <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
-                :class="mailItemClass(row)">
-                <template #prefix v-if="multiActionMode">
-                  <n-checkbox v-model:checked="row.checked" />
+                :class="[mailItemClass(row), { 'mail-list-unread': isMailUnread(row) }]">
+                <template #prefix>
+                  <n-checkbox v-if="multiActionMode" v-model:checked="row.checked" />
+                  <n-button v-else-if="enableMailFlagged" text circle type="warning" @click.stop="toggleMailFlagged(row)"
+                    :aria-label="row.flagged ? t('removeFlagged') : t('addFlagged')">
+                    <template #icon>
+                      <n-icon :component="row.flagged ? StarRound : StarBorderRound" />
+                    </template>
+                  </n-button>
                 </template>
                 <n-thing :title="row.subject">
                   <template #description>
+                    <n-tag v-if="isMailUnread(row)" type="warning">
+                      {{ t('unread') }}
+                    </n-tag>
                     <n-tag type="info">
                       ID: {{ row.id }}
                     </n-tag>
@@ -461,6 +606,9 @@ onBeforeUnmount(() => {
             style="overflow: auto; max-height: 100vh;">
             <MailContentRenderer :mail="curMail" :showEMailTo="showEMailTo"
               :enableUserDeleteEmail="enableUserDeleteEmail" :showReply="showReply" :showSaveS3="showSaveS3"
+              :enableMailReadStatus="enableMailReadStatus" :enableMailFlagged="enableMailFlagged"
+              :onToggleUnread="toggleCurrentMailUnread"
+              :onToggleFlagged="toggleCurrentMailFlagged"
               :onDelete="deleteMail" :onReply="replyMail" :onForward="forwardMail" :onSaveToS3="saveToS3Proxy" />
           </n-card>
           <n-card :bordered="false" embedded class="mail-item" v-else>
@@ -475,9 +623,15 @@ onBeforeUnmount(() => {
       <div v-else class="mail-list-scroll">
         <n-list hoverable clickable>
           <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
-            :class="mailItemClass(row)">
-            <template #prefix v-if="multiActionMode">
-              <n-checkbox v-model:checked="row.checked" />
+            :class="[mailItemClass(row), { 'mail-list-unread': isMailUnread(row) }]">
+            <template #prefix>
+              <n-checkbox v-if="multiActionMode" v-model:checked="row.checked" />
+              <n-button v-else-if="enableMailFlagged" text circle type="warning" @click.stop="toggleMailFlagged(row)"
+                :aria-label="row.flagged ? t('removeFlagged') : t('addFlagged')">
+                <template #icon>
+                  <n-icon :component="row.flagged ? StarRound : StarBorderRound" />
+                </template>
+              </n-button>
             </template>
             <n-thing class="mail-list-thing">
               <template #header>
@@ -487,6 +641,9 @@ onBeforeUnmount(() => {
               </template>
               <template #description>
                 <div class="mail-list-meta">
+                  <n-tag v-if="isMailUnread(row)" type="warning">
+                    {{ t('unread') }}
+                  </n-tag>
                   <n-tag type="info">
                     ID: {{ row.id }}
                   </n-tag>
@@ -529,16 +686,38 @@ onBeforeUnmount(() => {
         <n-button @click="backFirstPageAndRefresh" tertiary size="small" type="primary">
           {{ t('refresh') }}
         </n-button>
+        <n-button v-if="enableMailReadStatus && currentPageHasUnread" @click="markCurrentPageRead" tertiary size="small">
+          {{ t('markCurrentPageRead') }}
+        </n-button>
       </n-space>
       <div v-if="showFilterInput" style="padding: 0 10px; margin-top: 8px; margin-bottom: 10px;">
         <n-input v-model:value="localFilterKeyword"
           :placeholder="t('keywordQueryTip')" size="small" clearable />
       </div>
+      <div v-if="enableMailReadStatus || enableMailFlagged" style="padding: 0 10px; margin-bottom: 10px;">
+        <n-select v-if="enableMailReadStatus" v-model:value="mailStateFilter" :options="mailStateFilterOptions"
+          size="small" />
+        <n-checkbox v-if="enableMailFlagged" v-model:checked="flaggedOnly" style="margin-top: 8px;">
+          {{ t('flagged') }}
+        </n-checkbox>
+      </div>
       <div style="overflow: auto; min-height: 60vh; max-height: 100vh;">
         <n-list hoverable clickable>
-          <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)">
+          <n-list-item v-for="row in data" v-bind:key="row.id" @click="() => clickRow(row)"
+            :class="{ 'mail-list-unread': isMailUnread(row) }">
+            <template #prefix>
+              <n-button v-if="enableMailFlagged" text circle type="warning" @click.stop="toggleMailFlagged(row)"
+                :aria-label="row.flagged ? t('removeFlagged') : t('addFlagged')">
+                <template #icon>
+                  <n-icon :component="row.flagged ? StarRound : StarBorderRound" />
+                </template>
+              </n-button>
+            </template>
             <n-thing :title="row.subject">
               <template #description>
+                <n-tag v-if="isMailUnread(row)" type="warning">
+                  {{ t('unread') }}
+                </n-tag>
                 <n-tag type="info">
                   ID: {{ row.id }}
                 </n-tag>
@@ -568,6 +747,9 @@ onBeforeUnmount(() => {
             <MailContentRenderer :mail="curMail" :showEMailTo="showEMailTo"
               :enableUserDeleteEmail="enableUserDeleteEmail" :showReply="showReply" :showSaveS3="showSaveS3"
               :useUTCDate="useUTCDate" :onDelete="deleteMail" :onReply="replyMail" :onForward="forwardMail"
+              :enableMailReadStatus="enableMailReadStatus" :enableMailFlagged="enableMailFlagged"
+              :onToggleUnread="toggleCurrentMailUnread"
+              :onToggleFlagged="toggleCurrentMailFlagged"
               :onSaveToS3="saveToS3Proxy" />
           </n-card>
         </n-drawer-content>
@@ -674,6 +856,10 @@ onBeforeUnmount(() => {
 
 .mail-list-scroll :deep(.n-list-item__main) {
   min-width: 0;
+}
+
+.mail-list-unread :deep(.n-thing-header__title) {
+  font-weight: 700;
 }
 
 pre {

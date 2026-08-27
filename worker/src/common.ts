@@ -7,6 +7,7 @@ import { unbindTelegramByAddress } from './telegram_api/common';
 import { CONSTANTS } from './constants';
 import { AddressCreationSettings, AdminWebhookSettings, ExtractResult, WebhookMail, WebhookSettings } from './models';
 import i18n from './i18n';
+import { deleteRawMails, serializeMailStates } from './mail_flags';
 
 const DEFAULT_NAME_REGEX = /[^a-z0-9]/g;
 const DEFAULT_RANDOM_SUBDOMAIN_LENGTH = 8;
@@ -527,20 +528,25 @@ export const cleanup = async (
             )
             break;
         case "mails":
-            await c.env.DB.prepare(`
-                DELETE FROM raw_mails WHERE id IN (
+            await deleteRawMails(
+                c.env.DB,
+                c.env,
+                `id IN (
                     SELECT id FROM raw_mails
                     WHERE created_at < datetime('now', ?)
                     ORDER BY created_at, id
-                    LIMIT ?
-                )`
-            ).bind(`-${cleanDays} day`, cleanupBatchSize).run();
+                    LIMIT ?)`,
+                [`-${cleanDays} day`, cleanupBatchSize],
+            );
             break;
         case "mails_unknow":
-            await c.env.DB.prepare(`
-                DELETE FROM raw_mails WHERE address NOT IN
-                (select name from address) AND created_at < datetime('now', '-${cleanDays} day')`
-            ).run();
+            await deleteRawMails(
+                c.env.DB,
+                c.env,
+                `address NOT IN (select name from address)`
+                    + ` AND created_at < datetime('now', '-${cleanDays} day')`,
+                [],
+            );
             break;
         case "sendbox":
             await c.env.DB.prepare(`
@@ -569,10 +575,12 @@ const batchDeleteAddressWithData = async (
     c: Context<HonoCustomType>,
     addressQueryCondition: string,
 ): Promise<boolean> => {
-    await c.env.DB.prepare(
-        `DELETE FROM raw_mails WHERE address IN ( ` +
-        `SELECT name FROM address WHERE ${addressQueryCondition})`
-    ).run();
+    await deleteRawMails(
+        c.env.DB,
+        c.env,
+        `address IN (SELECT name FROM address WHERE ${addressQueryCondition})`,
+        [],
+    );
     await c.env.DB.prepare(
         `DELETE FROM sendbox WHERE address IN ( ` +
         `SELECT name FROM address WHERE ${addressQueryCondition})`
@@ -626,9 +634,12 @@ export const deleteAddressWithData = async (
     // unbind telegram
     await unbindTelegramByAddress(c, address);
     // delete address and related data
-    const { success: mailSuccess } = await c.env.DB.prepare(
-        `DELETE FROM raw_mails WHERE address = ? `
-    ).bind(address).run();
+    const { success: mailSuccess } = await deleteRawMails(
+        c.env.DB,
+        c.env,
+        `address = ?`,
+        [address],
+    );
     const { success: sendAccess } = await c.env.DB.prepare(
         `DELETE FROM address_sender WHERE address = ? `
     ).bind(address).run();
@@ -704,7 +715,7 @@ export const hideObjectFields = <T extends Record<string, unknown>>(
  */
 export const handleMailListQuery = async (
     c: Context<HonoCustomType>,
-    query: string, countQuery: string, params: string[],
+    query: string, countQuery: string, params: (string | number)[],
     limit: string | number | undefined | null,
     offset: string | number | undefined | null,
     orderBy?: string
@@ -721,10 +732,11 @@ export const handleMailListQuery = async (
         ...params, limit, offset
     ).all();
     const resolvedResults = await resolveRawEmailList(results);
+    const serializedResults = await serializeMailStates(c.env.DB, resolvedResults, c.env);
     const count = offset == 0 ? await c.env.DB.prepare(
         countQuery
     ).bind(...params).first("count") : 0;
-    return c.json({ results: resolvedResults, count });
+    return c.json({ results: serializedResults, count });
 }
 
 export const commonParseMail = async (parsedEmailContext: ParsedEmailContext): Promise<{

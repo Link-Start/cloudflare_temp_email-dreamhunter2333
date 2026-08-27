@@ -3,6 +3,7 @@ import { createMimeMessage } from "mimetext";
 import { UserSettings, RoleAddressConfig } from "./models";
 import { CONSTANTS } from "./constants";
 import { compressText } from "./gzip";
+import { initializeMailFlagsAfterInsert } from "./mail_flags";
 
 export const getJsonObjectValue = <T = any>(
     value: string | any
@@ -371,7 +372,7 @@ export const sendAdminInternalMail = async (
         });
         const message_id = Math.random().toString(36).substring(2, 15);
         const rawText = msg.asRaw();
-        let success = false;
+        let insertResult: D1Result | null = null;
         if (getBooleanValue(c.env.ENABLE_MAIL_GZIP)) {
             let compressed: ArrayBuffer | null = null;
             try {
@@ -381,34 +382,41 @@ export const sendAdminInternalMail = async (
             }
             if (compressed) {
                 try {
-                    ({ success } = await c.env.DB.prepare(
+                    insertResult = await c.env.DB.prepare(
                         `INSERT INTO raw_mails (source, address, raw_blob, message_id) VALUES (?, ?, ?, ?)`
-                    ).bind("admin@internal", toMail, compressed, message_id).run());
+                    ).bind("admin@internal", toMail, compressed, message_id).run();
                 } catch (dbError) {
                     const errMsg = String(dbError);
                     if (errMsg.includes('raw_blob') || errMsg.includes('no such column')) {
                         console.error("raw_blob column missing, falling back to plaintext", dbError);
-                        ({ success } = await c.env.DB.prepare(
+                        insertResult = await c.env.DB.prepare(
                             `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-                        ).bind("admin@internal", toMail, rawText, message_id).run());
+                        ).bind("admin@internal", toMail, rawText, message_id).run();
                     } else {
                         throw dbError;
                     }
                 }
             } else {
-                ({ success } = await c.env.DB.prepare(
+                insertResult = await c.env.DB.prepare(
                     `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-                ).bind("admin@internal", toMail, rawText, message_id).run());
+                ).bind("admin@internal", toMail, rawText, message_id).run();
             }
         } else {
-            ({ success } = await c.env.DB.prepare(
+            insertResult = await c.env.DB.prepare(
                 `INSERT INTO raw_mails (source, address, raw, message_id) VALUES (?, ?, ?, ?)`
-            ).bind("admin@internal", toMail, rawText, message_id).run());
+            ).bind("admin@internal", toMail, rawText, message_id).run();
         }
-        if (!success) {
+        if (!insertResult?.success) {
             console.log(`Failed save message from admin@internal to ${toMail}`);
+        } else {
+            await initializeMailFlagsAfterInsert(
+                c.env.DB,
+                c.env,
+                insertResult?.meta.last_row_id ?? 0,
+                toMail,
+            );
         }
-        return success;
+        return insertResult?.success ?? false;
     } catch (error) {
         console.log("sendAdminInternalMail error", error);
         return false;

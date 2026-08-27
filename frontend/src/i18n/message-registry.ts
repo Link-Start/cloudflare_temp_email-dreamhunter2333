@@ -34,6 +34,10 @@ export const MESSAGE_REGISTRY = {
     }
   },
   "components.MailBox": {
+    "allMail": {
+      "en": "All Mail",
+      "zh": "全部邮件"
+    },
     "attachments": {
       "en": "Show Attachments",
       "zh": "查看附件"
@@ -70,9 +74,17 @@ export const MESSAGE_REGISTRY = {
       "en": "Forward",
       "zh": "转发"
     },
+    "flagged": {
+      "en": "Flagged",
+      "zh": "星标邮件"
+    },
     "keywordQueryTip": {
       "en": "Filter current page",
       "zh": "过滤当前页"
+    },
+    "markCurrentPageRead": {
+      "en": "Mark This Page as Read",
+      "zh": "本页全部已读"
     },
     "multiAction": {
       "en": "Multi Action",
@@ -93,6 +105,10 @@ export const MESSAGE_REGISTRY = {
     "query": {
       "en": "Query",
       "zh": "查询"
+    },
+    "read": {
+      "en": "Read",
+      "zh": "已读"
     },
     "refresh": {
       "en": "Refresh",
@@ -129,6 +145,18 @@ export const MESSAGE_REGISTRY = {
     "unselectAll": {
       "en": "Unselect All",
       "zh": "取消全选"
+    },
+    "unread": {
+      "en": "Unread",
+      "zh": "未读"
+    },
+    "addFlagged": {
+      "en": "Add Star",
+      "zh": "添加星标"
+    },
+    "removeFlagged": {
+      "en": "Remove Star",
+      "zh": "取消星标"
     }
   },
   "components.AiExtractInfo": {
@@ -170,6 +198,10 @@ export const MESSAGE_REGISTRY = {
       "en": "View Attachments",
       "zh": "查看附件"
     },
+    "addFlagged": {
+      "en": "Add Star",
+      "zh": "添加星标"
+    },
     "delete": {
       "en": "Delete",
       "zh": "删除"
@@ -194,9 +226,21 @@ export const MESSAGE_REGISTRY = {
       "en": "Load Images",
       "zh": "加载图片"
     },
+    "markRead": {
+      "en": "Mark as Read",
+      "zh": "标记已读"
+    },
+    "markUnread": {
+      "en": "Mark as Unread",
+      "zh": "标记未读"
+    },
     "remoteImagesBlocked": {
       "en": "{count} remote resources blocked to protect your privacy",
       "zh": "已阻止 {count} 项外部资源以保护隐私"
+    },
+    "removeFlagged": {
+      "en": "Remove Star",
+      "zh": "取消星标"
     },
     "reply": {
       "en": "Reply",

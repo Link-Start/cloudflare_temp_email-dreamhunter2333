@@ -20,6 +20,15 @@ CREATE INDEX IF NOT EXISTS idx_raw_mails_created_at ON raw_mails(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_raw_mails_message_id ON raw_mails(message_id);
 
+CREATE TABLE IF NOT EXISTS mail_flags (
+    mail_id INTEGER NOT NULL,
+    address_id INTEGER NOT NULL,
+    flag INTEGER NOT NULL,
+    PRIMARY KEY (mail_id, flag)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_mail_flags_address_flag_mail ON mail_flags(address_id, flag, mail_id DESC);
+
 CREATE TABLE IF NOT EXISTS address (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE,

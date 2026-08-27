@@ -6,6 +6,7 @@ import { getJsonSetting, saveSetting } from '../utils';
 import { CleanupSettings, CustomSqlCleanup } from '../models';
 import i18n from '../i18n';
 import { LocaleMessages } from '../i18n/type';
+import { cleanupOrphanMailFlags } from '../mail_flags';
 
 // SQL validation error types
 type SqlValidationError = 'empty' | 'too_long' | 'not_delete' | 'multiple_statements' | 'has_comments';
@@ -84,6 +85,7 @@ export const executeCustomSqlCleanup = async (
         console.log(`Executing custom SQL cleanup [${customSql.name}]: ${sql}`);
         const result = await c.env.DB.prepare(sql).run();
         const rowsAffected = result.meta?.changes ?? 0;
+        await cleanupOrphanMailFlags(c.env.DB, c.env);
         console.log(`Custom SQL cleanup [${customSql.name}] completed, rows affected: ${rowsAffected}`);
         return { success: true, rowsAffected };
     } catch (error) {

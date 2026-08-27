@@ -1,6 +1,7 @@
 import { Context } from "hono";
 import { handleMailListQuery } from "../common";
 import { resolveRawEmailRow } from "../gzip";
+import { deleteRawMails } from "../mail_flags";
 
 export default {
     getMails: async (c: Context<HonoCustomType>) => {
@@ -35,9 +36,7 @@ export default {
     },
     deleteMail: async (c: Context<HonoCustomType>) => {
         const { id } = c.req.param();
-        const { success } = await c.env.DB.prepare(
-            `DELETE FROM raw_mails WHERE id = ? `
-        ).bind(id).run();
+        const { success } = await deleteRawMails(c.env.DB, c.env, `id = ?`, [id]);
         return c.json({
             success: success
         })

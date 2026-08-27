@@ -20,6 +20,7 @@ ADMIN_PASSWORDS = '["e2e-admin-pass"]'
 ENABLE_WEBHOOK = true
 E2E_TEST_MODE = true
 ENABLE_MAIL_GZIP = true
+ENABLE_MAIL_READ_STATUS = true
 SMTP_CONFIG = """
 {"test.example.com":{"host":"mailpit","port":1025,"secure":false}}
 """

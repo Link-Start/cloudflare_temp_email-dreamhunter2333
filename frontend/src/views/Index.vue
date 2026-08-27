@@ -32,18 +32,40 @@ const SendMail = defineAsyncComponent(() => {
 
 const { t } = useScopedI18n('views.Index')
 
-const fetchMailData = async (limit, offset) => {
+const fetchMailData = async (limit, offset, mailState, flaggedOnly) => {
   if (mailIdQuery.value > 0) {
     const singleMail = await api.fetch(`/api/mail/${mailIdQuery.value}`);
     if (singleMail) return { results: [singleMail], count: 1 };
     return { results: [], count: 0 };
   }
-  return await api.fetch(`/api/mails?limit=${limit}&offset=${offset}`);
+  const mailStateQuery = mailState ? `&mail_state=${encodeURIComponent(mailState)}` : ''
+  const flaggedQuery = flaggedOnly ? '&flagged=true' : ''
+  return await api.fetch(
+    `/api/mails?limit=${limit}&offset=${offset}${mailStateQuery}${flaggedQuery}`
+  );
 };
 
 const deleteMail = async (curMailId) => {
   await api.fetch(`/api/mails/${curMailId}`, { method: 'DELETE' });
 };
+
+const updateMailState = async (ids, state) => {
+  return await api.fetch(`/api/mails/state`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, state })
+  });
+};
+
+const updateMailFlagged = async (ids, flagged) => {
+  return await api.fetch(`/api/mails/flagged`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, flagged })
+  });
+};
+
+const fetchMailStates = async () => {
+  return await api.fetch(`/api/mail-states`)
+}
 
 const deleteSenboxMail = async (curMailId) => {
   await api.fetch(`/api/sendbox/${curMailId}`, { method: 'DELETE' });
@@ -127,7 +149,10 @@ onMounted(() => {
           </div>
           <MailBox :key="mailBoxKey" :showEMailTo="false" :showReply="openSettings.enableSendMail" :showSaveS3="openSettings.isS3Enabled"
             :saveToS3="saveToS3" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail"
-            :fetchMailData="fetchMailData" :deleteMail="deleteMail" :showFilterInput="true" />
+            :fetchMailData="fetchMailData" :deleteMail="deleteMail" :showFilterInput="true"
+            :enableMailReadStatus="openSettings.enableMailReadStatus"
+            :enableMailFlagged="openSettings.enableMailFlagged" :updateMailState="updateMailState"
+            :updateMailFlagged="updateMailFlagged" :fetchMailStates="fetchMailStates" />
         </n-tab-pane>
         <n-tab-pane v-if="openSettings.enableSendMail" name="sendbox" :tab="t('sendbox')">
           <SendBox :fetchMailData="fetchSenboxData" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail"

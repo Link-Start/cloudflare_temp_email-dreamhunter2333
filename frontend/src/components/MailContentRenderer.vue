@@ -34,6 +34,14 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  enableMailReadStatus: {
+    type: Boolean,
+    default: false
+  },
+  enableMailFlagged: {
+    type: Boolean,
+    default: false
+  },
   // 回调函数 props
   onDelete: {
     type: Function,
@@ -48,6 +56,14 @@ const props = defineProps({
     default: () => { }
   },
   onSaveToS3: {
+    type: Function,
+    default: () => { }
+  },
+  onToggleUnread: {
+    type: Function,
+    default: () => { }
+  },
+  onToggleFlagged: {
     type: Function,
     default: () => { }
   }
@@ -144,6 +160,14 @@ const handleSaveToS3 = async (filename, blob) => {
           <n-icon :component="CloudDownloadRound" />
         </template>
         {{ t('downloadMail') }}
+      </n-button>
+
+      <n-button v-if="enableMailReadStatus" size="small" tertiary type="info" @click="onToggleUnread">
+        {{ mail.unread ? t('markRead') : t('markUnread') }}
+      </n-button>
+
+      <n-button v-if="enableMailFlagged" size="small" tertiary type="warning" @click="onToggleFlagged">
+        {{ mail.flagged ? t('removeFlagged') : t('addFlagged') }}
       </n-button>
 
       <n-button v-if="showReply" size="small" tertiary type="info" @click="handleReply">

@@ -20,11 +20,13 @@ const queryMail = () => {
     mailBoxKey.value = Date.now();
 }
 
-const fetchMailData = async (limit, offset) => {
+const fetchMailData = async (limit, offset, mailState, flaggedOnly) => {
     return await api.fetch(
         `/user_api/mails`
         + `?limit=${limit}`
         + `&offset=${offset}`
+        + (mailState ? `&mail_state=${encodeURIComponent(mailState)}` : '')
+        + (flaggedOnly ? '&flagged=true' : '')
         + (addressFilter.value ? `&address=${addressFilter.value}` : '')
     );
 }
@@ -50,6 +52,24 @@ const deleteMail = async (curMailId) => {
     await api.fetch(`/user_api/mails/${curMailId}`, { method: 'DELETE' });
 };
 
+const updateMailState = async (ids, state) => {
+    return await api.fetch(`/user_api/mails/state`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ids, state })
+    });
+};
+
+const updateMailFlagged = async (ids, flagged) => {
+    return await api.fetch(`/user_api/mails/flagged`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ids, flagged })
+    });
+};
+
+const fetchMailStates = async () => {
+    return await api.fetch(`/user_api/mail-states`)
+}
+
 watch(addressFilter, async (newValue) => {
     queryMail();
 });
@@ -70,6 +90,10 @@ onMounted(() => {
         </n-input-group>
         <div style="margin-top: 10px;"></div>
         <MailBox :key="mailBoxKey" :enableUserDeleteEmail="openSettings.enableUserDeleteEmail" :fetchMailData="fetchMailData"
-            :deleteMail="deleteMail" :showFilterInput="true" />
+            :deleteMail="deleteMail" :showFilterInput="true"
+            :enableMailReadStatus="openSettings.enableMailReadStatus"
+            :enableMailFlagged="openSettings.enableMailFlagged"
+            :updateMailState="updateMailState" :updateMailFlagged="updateMailFlagged"
+            :fetchMailStates="fetchMailStates" />
     </div>
 </template>

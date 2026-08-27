@@ -19,6 +19,52 @@ res = requests.get(
 
 **注意**：`/api/mails` 按设计返回的是原始 RFC822 数据（如 `source`/`raw`），不保证直接包含 `subject`、`text`、`html` 等已解析字段。若要直接读取正文，请在客户端侧解析 `raw`（例如 `mail-parser-wasm`、`postal-mime`）。
 
+## 邮件状态 API
+
+完成数据库迁移后，可分别启用 `ENABLE_MAIL_READ_STATUS` 和 `ENABLE_MAIL_FLAGGED`。前者让邮件响应包含 `unread`，后者包含 `flagged`；两个开关互不依赖。邮件状态保存在独立的稀疏关联表中，不修改 `raw_mails`；没有状态记录的历史邮件默认已读且未星标，状态计算和更新全部由后端处理。
+
+已读状态是高写入量功能：启用后每封新邮件会新增一条未读记录，邮件变为已读时再删除。仅启用星标不会执行这些写入，只有用户添加或取消星标时才修改数据库。
+
+地址 JWT 使用 `GET /api/mail-states` 获取当前可用的已读状态。前端直接使用其中的 `value` 作为筛选和更新参数，并使用 `label_key` 显示名称。
+
+使用 `PATCH /api/mails/state` 批量移动邮件状态，每次最多传入 100 个邮件 ID：
+
+```python
+requests.patch(
+    "https://<你的worker地址>/api/mails/state",
+    headers={"Authorization": "Bearer <你的JWT密码>"},
+    json={"ids": [1, 2], "state": "read"}
+)
+```
+
+用户 JWT 使用 `GET /user_api/mail-states` 和 `PATCH /user_api/mails/state`，只能修改该用户已绑定地址的邮件。接口返回更新后的 `unread` 状态。
+
+星标与已读状态相互独立。使用 `PATCH /api/mails/flagged` 添加或取消星标：
+
+```python
+requests.patch(
+    "https://<你的worker地址>/api/mails/flagged",
+    headers={"Authorization": "Bearer <你的JWT密码>"},
+    json={"ids": [1, 2], "flagged": True}
+)
+```
+
+用户 JWT 对应接口为 `PATCH /user_api/mails/flagged`。
+
+邮件列表使用后端返回的状态 `value` 查询。例如查询未读邮件：
+
+```text
+GET /api/mails?limit=20&offset=0&mail_state=unread
+```
+
+使用 `flagged=true` 查询星标邮件，并可与 `mail_state` 组合：
+
+```text
+GET /api/mails?limit=20&offset=0&mail_state=unread&flagged=true
+```
+
+`/user_api/mails` 支持相同参数。
+
 ## admin 邮件 API
 
 支持 `address` 过滤

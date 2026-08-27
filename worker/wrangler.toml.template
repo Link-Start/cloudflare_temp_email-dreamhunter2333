@@ -77,6 +77,10 @@ ENABLE_USER_CREATE_EMAIL = true
 # DISABLE_ANONYMOUS_USER_CREATE_EMAIL = true
 # Allow users to delete messages
 ENABLE_USER_DELETE_EMAIL = true
+# Enable per-message read status. This adds one write for each new mail and another when it is read.
+# ENABLE_MAIL_READ_STATUS = true
+# Enable low-write Flagged/starred mail independently from read status.
+# ENABLE_MAIL_FLAGGED = true
 # Allow automatic replies to emails
 ENABLE_AUTO_REPLY = false
 # Allow webhook
