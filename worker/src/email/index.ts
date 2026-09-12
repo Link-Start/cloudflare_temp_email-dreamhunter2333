@@ -65,11 +65,13 @@ async function email(message: ForwardableEmailMessage, env: Bindings, ctx: Execu
     }
 
     const message_id = message.headers.get("Message-ID");
+    let storedMailId: number | undefined;
     // save email
     try {
-        const { success } = await storeRawMail(
+        const { success, meta } = await storeRawMail(
             env, message.from, toAddress, message_id, parsedEmailContext.rawEmail
         );
+        if (success) storedMailId = meta.last_row_id;
         if (!success) {
             message.setReject(`Failed save message to ${toAddress}`);
             console.error(`Failed save message from ${message.from} to ${toAddress}`);
@@ -98,7 +100,7 @@ async function email(message: ForwardableEmailMessage, env: Bindings, ctx: Execu
     try {
         await triggerWebhook(
             { env: env } as Context<HonoCustomType>,
-            toAddress, parsedEmailContext, message_id, aiExtractResult
+            toAddress, parsedEmailContext, storedMailId, aiExtractResult
         );
     } catch (error) {
         console.error("send webhook error", error);
